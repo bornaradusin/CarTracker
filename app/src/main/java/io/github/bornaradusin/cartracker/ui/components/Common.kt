@@ -244,29 +244,6 @@ fun QuietButton(text: String, modifier: Modifier = Modifier, outlined: Boolean =
     }
 }
 
-/** Round colour swatch with a selection ring. */
-@Composable
-fun Swatch(color: Color, label: String, selected: Boolean, ring: Color, onClick: () -> Unit) {
-    val c = LocalAppColors.current
-    Box(
-        Modifier
-            .size(46.dp)
-            .clip(CircleShape)
-            .border(2.5.dp, if (selected) ring else Color.Transparent, CircleShape)
-            .clickable(role = Role.RadioButton, onClick = onClick)
-            .semantics { contentDescription = label },
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            Modifier
-                .size(34.dp)
-                .clip(CircleShape)
-                .background(color)
-                .then(if (color == Color.White) Modifier.border(1.5.dp, c.line, CircleShape) else Modifier),
-        )
-    }
-}
-
 /** Screen header: optional back arrow, title, optional subtitle, optional right-hand content. */
 @Composable
 fun ScreenHeader(title: String, subtitle: String? = null, onBack: (() -> Unit)? = null, trailing: @Composable RowScope.() -> Unit = {}) {

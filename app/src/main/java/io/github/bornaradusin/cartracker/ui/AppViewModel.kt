@@ -23,7 +23,6 @@ import io.github.bornaradusin.cartracker.data.Trip
 import io.github.bornaradusin.cartracker.data.UpdateRate
 import io.github.bornaradusin.cartracker.data.str
 import io.github.bornaradusin.cartracker.ui.map.CarImages
-import io.github.bornaradusin.cartracker.ui.theme.Ic
 import io.github.bornaradusin.cartracker.ui.theme.Palette
 import androidx.compose.ui.graphics.Color
 import io.github.bornaradusin.cartracker.util.Format
@@ -309,11 +308,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // ---------- the car ----------
 
     fun select(deviceId: Long) = viewModelScope.launch { c.settings.setSelectedDevice(deviceId) }
-
-    fun refreshNow() = viewModelScope.launch {
-        runCatching { live.refresh() }.onFailure { say("Couldn't reach the server.") }
-        selectedId.value.takeIf { it != 0L }?.let { refreshDay(it) }
-    }
 
     private fun carInfo(
         d: Device,

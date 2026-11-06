@@ -16,7 +16,6 @@ import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,7 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -67,7 +65,6 @@ import io.github.bornaradusin.cartracker.ui.components.ChevronRow
 import io.github.bornaradusin.cartracker.ui.components.ScreenHeader
 import io.github.bornaradusin.cartracker.ui.components.SectionCard
 import io.github.bornaradusin.cartracker.ui.components.SettingRow
-import io.github.bornaradusin.cartracker.ui.components.Swatch
 import io.github.bornaradusin.cartracker.ui.components.ToggleRow
 import io.github.bornaradusin.cartracker.ui.theme.Ic
 import io.github.bornaradusin.cartracker.ui.theme.LocalAppColors

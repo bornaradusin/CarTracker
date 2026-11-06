@@ -1,5 +1,14 @@
 package io.github.bornaradusin.cartracker.ui.map
 
+import org.maplibre.android.location.modes.RenderMode
+import org.maplibre.android.location.modes.CameraMode
+import org.maplibre.android.location.LocationComponentActivationOptions
+import kotlinx.coroutines.delay
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
+import android.content.Context
+import android.annotation.SuppressLint
+import android.Manifest
 import android.graphics.PointF
 import android.view.Gravity
 import androidx.compose.foundation.layout.fillMaxSize
@@ -62,7 +71,14 @@ sealed interface MapCamera {
 
     data class Center(val latitude: Double, val longitude: Double, val zoom: Double?, override val stamp: Int) : MapCamera
     data class Fit(val points: List<LatLng>, override val stamp: Int) : MapCamera
+
+    /** You and the car together (just you if the car has no position yet). */
+    data class WithMe(val car: LatLng?, override val stamp: Int) : MapCamera
 }
+
+fun hasLocationPermission(context: Context): Boolean =
+    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
 /**
  * The map: MapLibre with a key-free style, the cars' icons, places as dashed circles and, for trip
@@ -80,6 +96,8 @@ fun TrackerMap(
     routeColor: Color = Color(0xFF1D5BD8),
     showRouteEnds: Boolean = false,
     camera: MapCamera? = null,
+    /** Shows where you are, as a blue dot, once location is allowed. */
+    showMyLocation: Boolean = false,
     topPadding: Dp = 0.dp,
     bottomPadding: Dp = 0.dp,
     onMarkerClick: (Long) -> Unit = {},
@@ -146,6 +164,12 @@ fun TrackerMap(
             addOverlayLayers(s, routeColor)
             loaded = s
         }
+    }
+
+    LaunchedEffect(loaded, showMyLocation) {
+        val m = map ?: return@LaunchedEffect
+        val s = loaded ?: return@LaunchedEffect
+        if (showMyLocation && hasLocationPermission(context)) showMe(context, m, s)
     }
 
     LaunchedEffect(map, topPx, bottomPx) {
@@ -217,31 +241,53 @@ fun TrackerMap(
                     .build()
                 m.animateCamera(CameraUpdateFactory.newCameraPosition(position), 600)
             }
-            is MapCamera.Fit -> {
-                val distinct = c.points.distinct()
-                if (distinct.size == 1) {
-                    val p = distinct.first()
-                    m.animateCamera(
-                        CameraUpdateFactory.newCameraPosition(
-                            CameraPosition.Builder().target(p).zoom(15.0)
-                                .padding(0.0, topPx.toDouble(), 0.0, bottomPx.toDouble()).build(),
-                        ),
-                        600,
-                    )
-                } else if (distinct.size > 1) {
-                    val bounds = LatLngBounds.Builder().includes(distinct).build()
-                    val pad = with(density) { 48.dp.toPx() }.toInt()
-                    m.animateCamera(
-                        CameraUpdateFactory.newLatLngBounds(bounds, pad, topPx.toInt() + pad, pad, bottomPx.toInt() + pad),
-                        600,
-                    )
+            is MapCamera.Fit -> fit(m, c.points, topPx, bottomPx, with(density) { 48.dp.toPx() }.toInt())
+            is MapCamera.WithMe -> {
+                // Where you are can take a moment to come in the first time
+                var me: LatLng? = null
+                for (attempt in 0 until 12) {
+                    me = runCatching { m.locationComponent.lastKnownLocation }.getOrNull()?.let { LatLng(it.latitude, it.longitude) }
+                    if (me != null) break
+                    delay(500)
                 }
+                fit(m, listOfNotNull(c.car, me), topPx, bottomPx, with(density) { 64.dp.toPx() }.toInt())
             }
             null -> Unit
         }
     }
 
     AndroidView(factory = { mapView }, modifier = modifier.then(Modifier.fillMaxSize()))
+}
+
+/** Shows where you are as a blue dot, with the way your phone is facing. Needs location allowed first. */
+@SuppressLint("MissingPermission")
+private fun showMe(context: Context, map: MapLibreMap, style: Style) {
+    runCatching {
+        val component = map.locationComponent
+        component.activateLocationComponent(
+            LocationComponentActivationOptions.builder(context, style).useDefaultLocationEngine(true).build(),
+        )
+        component.isLocationComponentEnabled = true
+        component.cameraMode = CameraMode.NONE
+        component.renderMode = RenderMode.COMPASS
+    }
+}
+
+/** Moves the map to show every point, or zooms in on one. */
+private fun fit(m: MapLibreMap, points: List<LatLng>, topPx: Float, bottomPx: Float, pad: Int) {
+    val distinct = points.distinct()
+    if (distinct.size == 1) {
+        m.animateCamera(
+            CameraUpdateFactory.newCameraPosition(
+                CameraPosition.Builder().target(distinct.first()).zoom(15.0)
+                    .padding(0.0, topPx.toDouble(), 0.0, bottomPx.toDouble()).build(),
+            ),
+            600,
+        )
+    } else if (distinct.size > 1) {
+        val bounds = LatLngBounds.Builder().includes(distinct).build()
+        m.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, pad, topPx.toInt() + pad, pad, bottomPx.toInt() + pad), 600)
+    }
 }
 
 private const val SOURCE_MARKERS = "ct-markers"

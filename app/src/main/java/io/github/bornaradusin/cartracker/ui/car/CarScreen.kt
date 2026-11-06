@@ -1,5 +1,10 @@
 package io.github.bornaradusin.cartracker.ui.car
 
+import org.maplibre.android.geometry.LatLng
+import io.github.bornaradusin.cartracker.ui.map.hasLocationPermission
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.Manifest
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.IntOffset
@@ -131,8 +136,22 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
         }
     }
 
+    // Your location: a blue dot once allowed, and a button showing you and the car together
+    var locationAllowed by remember { mutableStateOf(hasLocationPermission(context)) }
+    var showingMe by rememberSaveable { mutableStateOf(false) }
+    val askLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        locationAllowed = result.values.any { it }
+        if (locationAllowed) {
+            showingMe = true
+            cameraStamp++
+        } else {
+            vm.say("Allow location to see where you are on the map.")
+        }
+    }
+    LaunchedEffect(selectedId) { showingMe = false }
+
     // Keep the car in the middle of the map: on every new position, and when the card moves
-    LaunchedEffect(selectedId, fix?.latitude, fix?.longitude, collapsed) { if (fix != null) cameraStamp++ }
+    LaunchedEffect(selectedId, fix?.latitude, fix?.longitude, collapsed) { if (fix != null && !showingMe) cameraStamp++ }
     LaunchedEffect(selectedId) { selectedId?.let { vm.loadCommandOptions(it) } }
 
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -150,7 +169,12 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
                 fences[id].orEmpty().mapNotNull { f -> f.circle?.let { MapCircle(f.id, f.name, it.latitude, it.longitude, it.radius) } }
             }.orEmpty(),
             routeColor = c.accentOutline,
-            camera = car?.position?.takeIf { it.hasFix }?.let { MapCamera.Center(it.latitude, it.longitude, if (cameraStamp <= 1) 15.0 else null, cameraStamp) },
+            camera = if (showingMe) {
+                MapCamera.WithMe(fix?.let { LatLng(it.latitude, it.longitude) }, cameraStamp)
+            } else {
+                fix?.let { MapCamera.Center(it.latitude, it.longitude, if (cameraStamp <= 1) 15.0 else null, cameraStamp) }
+            },
+            showMyLocation = locationAllowed,
             topPadding = topInset + 72.dp,
             bottomPadding = sheetDp,
             onMarkerClick = { id -> vm.select(id) },
@@ -237,7 +261,18 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
                     }
                 }
             }
-            MapButton(Ic.crosshair, "Centre on the car") { cameraStamp++ }
+            MapButton(Ic.crosshair, "Show where I am and the car", selected = showingMe) {
+                if (locationAllowed) {
+                    showingMe = true
+                    cameraStamp++
+                } else {
+                    askLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                }
+            }
+            MapButton(Ic.car, "Centre on the car") {
+                showingMe = false
+                cameraStamp++
+            }
         }
 
         // bottom: the car card

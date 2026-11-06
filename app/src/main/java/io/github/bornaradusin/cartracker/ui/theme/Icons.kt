@@ -52,8 +52,6 @@ object Ic {
     val plus = line("plus", "M12 5v14M5 12h14")
     val minus = line("minus", "M5 12h14")
     val close = line("close", "M6 6l12 12M18 6L6 18")
-    val traffic = line("traffic", "M10 2h4a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3h-4a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3z", "M12 7h.01M12 12h.01M12 17h.01")
-    val streetView = line("streetView", circle(12f, 5f, 2.5f), "M9 21v-6H7.5V11a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v4H15v6z")
     val sliders = line("sliders", "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6")
     val key = line("key", "M15 7a4 4 0 1 1-4 4M11 11L3 19M5 17l2 2M7 15l2 2")
     val zap = line("zap", "M13 2L3 14h9l-1 8 10-12h-9z")
@@ -86,26 +84,4 @@ object Ic {
     }
 
     fun place(key: String): ImageVector = places[key] ?: pin
-
-    /** Vehicle icons for the map: name → path data (24 × 24). */
-    val vehiclePaths = linkedMapOf(
-        "Car" to "M5 16V12l2-5h10l2 5v4zM5 16v2M19 16v2",
-        "SUV" to "M3 16v-5l2-4h9l3 4h4v5zM6 16v2M18 16v2M14 7v4",
-        "Van" to "M2 16V7h13l4 4h3v5zM5 16v2M19 16v2M15 7v4h4",
-        "Pickup" to "M2 16v-4h7V8h6l3 4h4v4zM5 16v2M19 16v2",
-        "Motorbike" to "M2 16a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 16a3 3 0 1 0 6 0a3 3 0 1 0-6 0M5 16l4-6h5l5 6M13 10l-1-3h3",
-        "Truck" to "M2 6h12v10H2zM14 10h4l3 3v3h-7zM4 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M15 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0",
-    )
-
-    val vehicles: Map<String, ImageVector> = vehiclePaths.mapValues { (name, d) -> line(name, d) }
-
-    fun vehicle(name: String): ImageVector = vehicles[name] ?: vehicles.getValue("Car")
-
-    /** Traccar's device categories for each icon, so the choice also shows in Traccar's own apps. */
-    val categoryOf = mapOf(
-        "Car" to "car", "SUV" to "offroad", "Van" to "van", "Pickup" to "pickup", "Motorbike" to "motorcycle", "Truck" to "truck",
-    )
-
-    fun iconForCategory(category: String?): String =
-        categoryOf.entries.firstOrNull { it.value == category }?.key ?: "Car"
 }

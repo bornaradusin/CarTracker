@@ -37,3 +37,7 @@ Versions up to 1.0.4 were unsigned test builds. Uninstall CarTracker once and in
 ### The map is blank
 
 The maps load from the internet. Check your connection, or try another style from the layers button.
+
+### My location doesn't show
+
+Tap the crosshair button on the map and allow location. If you said no before, allow it in Android's settings: **Settings → Apps → CarTracker → Permissions → Location**.

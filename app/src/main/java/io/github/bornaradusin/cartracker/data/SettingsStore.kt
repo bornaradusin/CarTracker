@@ -24,8 +24,6 @@ data class DevicePrefs(
     val icon: String = "",
     /** Glow colour of the car's map pin, "#RRGGBB" (older versions saved a colour name). */
     val color: String = "",
-    /** No longer used: pins have one shape. Kept so older settings still load. */
-    val shape: String = "Circle",
     /** Paint colour of the car on its map pin, "#RRGGBB". */
     val carColor: String = "",
     /** The tracker arms itself a minute after the ignition goes off. */

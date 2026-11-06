@@ -5,6 +5,7 @@
 The **Car** tab shows your car on the map, with its card at the bottom.
 
 - **The car follows itself.** Every time the car sends a new position, the map moves to keep it in the middle, at whatever zoom you've chosen.
+- **You're on the map too.** Once you allow location, a blue dot shows where you are.
 - **The pin's point** is exactly where the car is. Tap another car's pin to switch to it.
 - **Top left:** the car's name. With more than one car, tap it to switch.
 - **Top right:** the bell, with the number of new alerts.
@@ -14,7 +15,8 @@ The **Car** tab shows your car on the map, with its card at the bottom.
 | Button | What it does |
 |---|---|
 | Layers | Map style: **Standard**, **Clean**, **Black & white** or **Terrain**. Each follows the app's light or dark theme |
-| Crosshair | Puts the car back in the middle |
+| Crosshair | Shows you and the car together. The first time, it asks to use your location. The map stops following the car until you tap the car button |
+| Car | Puts the car back in the middle and follows it again |
 
 <br clear="right">
 
