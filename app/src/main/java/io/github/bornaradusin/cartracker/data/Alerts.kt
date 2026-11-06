@@ -10,7 +10,7 @@ enum class AlertKind(val key: String, val title: String, val hint: String, val o
     LOW_BATTERY("low_battery", "Low car battery", "The car's battery is running low", true),
     SOS("sos", "SOS and tampering", "Panic button, tracker removed or tampered with", true),
     OTHER_ALARMS("other_alarms", "Other tracker alarms", "Anything else the tracker raises", true),
-    FUEL("fuel", "Fuel cut and restored", "When the tracker confirms an immobiliser change", true),
+    FUEL("fuel", "Tracker replies", "The tracker confirming a command, like fuel cut or alarm on", true),
     OFFLINE("offline", "Tracker offline", "The tracker stops reporting", false),
     MOVING("moving", "Started and stopped moving", "Every trip's start and end", false);
 

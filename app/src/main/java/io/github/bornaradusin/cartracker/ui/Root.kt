@@ -6,6 +6,9 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -89,6 +92,7 @@ private fun MainShell(vm: AppViewModel, openAlertsSignal: Int) {
     val snackbar = remember { SnackbarHostState() }
     val unread by vm.unreadAlerts.collectAsStateWithLifecycle()
     val rejected by vm.signInRejected.collectAsStateWithLifecycle()
+    val reply by vm.reply.collectAsStateWithLifecycle()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
 
@@ -174,6 +178,21 @@ private fun MainShell(vm: AppViewModel, openAlertsSignal: Int) {
             title = { Text("Signed out by the server") },
             text = { Text("The server no longer accepts this phone's sign-in. Please sign in again.") },
             confirmButton = { TextButton(onClick = { vm.signOut() }) { Text("Sign in again") } },
+        )
+    }
+
+    reply?.let { r ->
+        AlertDialog(
+            onDismissRequest = { vm.dismissReply() },
+            containerColor = c.surface,
+            title = { Text("${r.car} replied", color = c.ink) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(r.command, style = MaterialTheme.typography.labelMedium, color = c.muted, modifier = Modifier.padding(bottom = 8.dp))
+                    Text(r.text, style = MaterialTheme.typography.bodyMedium, color = c.ink)
+                }
+            },
+            confirmButton = { TextButton(onClick = { vm.dismissReply() }) { Text("OK", color = c.accentText) } },
         )
     }
 }

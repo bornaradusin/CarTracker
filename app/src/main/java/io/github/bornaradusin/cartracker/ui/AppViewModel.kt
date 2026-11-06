@@ -21,6 +21,7 @@ import io.github.bornaradusin.cartracker.data.TrackerCommands
 import io.github.bornaradusin.cartracker.data.TrackerKind
 import io.github.bornaradusin.cartracker.data.Trip
 import io.github.bornaradusin.cartracker.data.UpdateRate
+import io.github.bornaradusin.cartracker.data.str
 import io.github.bornaradusin.cartracker.ui.theme.Ic
 import io.github.bornaradusin.cartracker.util.Format
 import kotlinx.coroutines.FlowPreview
@@ -50,6 +51,9 @@ import java.time.temporal.ChronoUnit
 enum class CarStatus { MOVING, PARKED, OFFLINE }
 
 /** Everything the screens show about one car. */
+/** What a tracker answered to a command. */
+data class TrackerReply(val car: String, val command: String, val text: String)
+
 data class CarInfo(
     val device: Device,
     val position: Position?,
@@ -140,6 +144,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _serverCheck = MutableStateFlow<ServerCheck>(ServerCheck.Idle)
     val serverCheck: StateFlow<ServerCheck> = _serverCheck.asStateFlow()
+
+    private val _reply = MutableStateFlow<TrackerReply?>(null)
+
+    /** A tracker reply too long for a snackbar (status, settings), shown in a dialog. */
+    val reply: StateFlow<TrackerReply?> = _reply.asStateFlow()
+    private val replyWatchers = mutableMapOf<Long, Job>()
 
     private val _busy = MutableStateFlow<String?>(null)
     /** What's being sent right now ("Cut fuel"…), for a spinner. */
@@ -419,10 +429,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return try {
             val o = options(car.device.id)
             val toSend = if (preferSaved) TrackerCommands.preferSaved(command, o.saved, car.device.id) else command
+            val sentAt = Instant.now()
             val now = api.sendCommand(toSend)
             if (!quiet) {
-                say(if (now) "$label: sent to ${car.device.name}." else "${car.device.name} is offline. It gets this when it next connects.")
+                say(if (now) "$label: sent to ${car.device.name}. Waiting for it to confirm…" else "${car.device.name} is offline. It gets this when it next connects.")
             }
+            if (now) watchReply(car, label, sentAt)
             true
         } catch (e: ApiException) {
             say(
@@ -438,6 +450,35 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         } finally {
             _busy.value = null
         }
+    }
+
+    /**
+     * Waits up to 90 seconds for the tracker to answer [label] (Traccar records it as a
+     * "commandResult" event) and shows the answer. Commands sent while the car is offline are
+     * answered later; those replies come as a notification instead.
+     */
+    private fun watchReply(car: CarInfo, label: String, sentAt: Instant) {
+        replyWatchers.remove(car.device.id)?.cancel()
+        replyWatchers[car.device.id] = viewModelScope.launch {
+            val from = sentAt.minusSeconds(5)
+            val until = System.currentTimeMillis() + 90_000
+            while (isActive && System.currentTimeMillis() < until) {
+                delay(3_000)
+                val event = runCatching { api.events(listOf(car.device.id), from, Instant.now().plusSeconds(60)) }
+                    .getOrNull()
+                    ?.lastOrNull { it.type == "commandResult" }
+                    ?: continue
+                val text = TrackerCommands.readableReply(event.attributes.str("result").orEmpty())
+                if (text.isEmpty()) continue
+                if (text.length <= 60 && '\n' !in text) say("${car.device.name}: $text")
+                else _reply.value = TrackerReply(car.device.name, label, text)
+                return@launch
+            }
+        }
+    }
+
+    fun dismissReply() {
+        _reply.value = null
     }
 
     // ---------- alerts set on the tracker ----------

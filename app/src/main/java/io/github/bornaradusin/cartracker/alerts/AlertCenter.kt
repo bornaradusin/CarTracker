@@ -26,6 +26,10 @@ class AlertCenter(
 ) {
     private val mutex = Mutex()
 
+    /** True while the app is on screen: it shows tracker replies itself, so no notification for those. */
+    @Volatile
+    var appVisible = false
+
     suspend fun check() = mutex.withLock {
         val s = settings.current()
         if (!s.signedIn || !api.signedIn) return@withLock
@@ -45,6 +49,7 @@ class AlertCenter(
 
         val fresh = events.filter { it.id > s.lastEventId }
             .filter { event -> AlertKind.of(event)?.key?.let { it in s.alertKinds } == true }
+            .filter { event -> !(appVisible && event.type == "commandResult") }
             .sortedBy { it.id }
         if (fresh.isEmpty()) return@withLock
 

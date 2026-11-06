@@ -141,6 +141,20 @@ object TrackerCommands {
         }
     }
 
+    /**
+     * A tracker's reply in plain words: MiCODUS answers in capitals ("SET VIBRATE ALARM OK"),
+     * which reads better as a sentence ("Set vibrate alarm OK").
+     */
+    fun readableReply(reply: String): String {
+        val text = reply.replace("\u0000", "").trim()
+        if (text.isEmpty() || text.any { it.isLowerCase() }) return text
+        return text.lines().joinToString("\n") { line ->
+            line.lowercase()
+                .replaceFirstChar { it.uppercase() }
+                .replace(Regex("\\b(ok|gps|acc|sos|apn|imei|iccid|id|gmt|gprs|sms|km/h)\\b")) { it.value.uppercase() }
+        }
+    }
+
     fun hex(text: String): String = text.toByteArray(Charsets.US_ASCII).joinToString("") { "%02x".format(it) }
 
     /** Readable names for Traccar's command types, for the advanced list. */

@@ -27,10 +27,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        container.alerts.appVisible = true
         container.live.acquire(HOLDER)
     }
 
     override fun onStop() {
+        container.alerts.appVisible = false
         container.live.release(HOLDER)
         super.onStop()
     }
