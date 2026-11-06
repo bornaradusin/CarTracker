@@ -110,10 +110,13 @@ def main():
     shell("pm", "grant", PACKAGE, "android.permission.POST_NOTIFICATIONS")
     demo_status_bar()
     shell("am", "start", "-n", f"{PACKAGE}/.MainActivity")
-    time.sleep(4)
 
-    # Sign in: the emulator reaches the runner's Traccar at 10.0.2.2
-    fields = [centre for _, _, cls, centre in nodes() if cls == "android.widget.EditText"]
+    # Sign in: the emulator reaches the runner's Traccar at 10.0.2.2. The first start is slow.
+    fields = []
+    deadline = time.time() + 120
+    while time.time() < deadline and len(fields) < 3:
+        time.sleep(3)
+        fields = [centre for _, _, cls, centre in nodes() if cls.endswith("EditText")]
     if len(fields) < 3:
         raise SystemExit("Sign-in fields not found")
     tap_at(*fields[0]); type_text("http://10.0.2.2:8082")
@@ -177,6 +180,17 @@ def main():
     shot("car-dark", settle=8)
 
 
+def explain_failure():
+    """Leaves a picture of the screen and what was on it, to see where it stopped."""
+    try:
+        shot("failed-here", settle=0)
+        for text, desc, cls, centre in nodes():
+            if text or desc:
+                print("on screen:", cls.split(".")[-1], repr(text or desc), centre)
+    except Exception as e:
+        print("couldn't capture the screen:", e)
+
+
 if __name__ == "__main__":
     # Keeps the demo car online while the screenshots are taken; stopped at the end so the step can finish
     keepalive = subprocess.Popen(
@@ -186,5 +200,8 @@ if __name__ == "__main__":
     )
     try:
         main()
+    except BaseException:
+        explain_failure()
+        raise
     finally:
         keepalive.kill()
