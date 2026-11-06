@@ -79,6 +79,29 @@ def hide_keyboard():
         time.sleep(1.5)
 
 
+def edit_boxes():
+    return sorted(((text, centre) for text, _, cls, centre in nodes() if cls.endswith("EditText")), key=lambda b: b[1][1])
+
+
+def fill(index, value, secret=False):
+    """Types into the index-th text box, a few characters at a time, and retypes it if keys got lost."""
+    for _ in range(3):
+        text, centre = edit_boxes()[index]
+        tap_at(*centre)
+        shell("input", "keyevent", "123")  # to the end
+        for _ in range(len(text) + 2):
+            shell("input", "keyevent", "67")  # delete
+        for i in range(0, len(value), 4):
+            shell("input", "text", value[i:i + 4])
+            time.sleep(0.3)
+        time.sleep(1.5)
+        typed = edit_boxes()[index][0]
+        if (len(typed) == len(value)) if secret else (typed == value):
+            return
+        print(f"retyping box {index}: got {typed!r}")
+    raise SystemExit(f"Couldn't type into box {index}")
+
+
 def swipe(x1, y1, x2, y2, ms=400):
     shell("input", "swipe", str(x1), str(y1), str(x2), str(y2), str(ms))
     time.sleep(1.5)
@@ -130,10 +153,7 @@ def main():
         raise SystemExit("Sign-in fields not found")
     # Look the boxes up again each time: hints appear under them as you type and move the rest down
     for index, value in enumerate(("http://10.0.2.2:8082", "demo@cartracker.app", "cartracker-demo")):
-        boxes = sorted((centre for _, _, cls, centre in nodes() if cls.endswith("EditText")), key=lambda c: c[1])
-        tap_at(*boxes[index])
-        type_text(value)
-        time.sleep(1)
+        fill(index, value, secret=index == 2)
     hide_keyboard()
     shot("login")
     tap("Sign in")
