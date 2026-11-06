@@ -216,7 +216,6 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
         }
 
         // right: map buttons, just above the card
-        val p = car?.position?.takeIf { it.hasFix }
         Column(
             Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = sheetDp + 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -237,9 +236,6 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
                         )
                     }
                 }
-            }
-            MapButton(Ic.streetView, "Street View of where the car is, in Google Maps") {
-                p?.let { openUrl(context, "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${it.latitude},${it.longitude}") }
             }
             MapButton(Ic.crosshair, "Centre on the car") { cameraStamp++ }
         }

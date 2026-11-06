@@ -14,7 +14,6 @@ The **Car** tab shows your car on the map, with its card at the bottom.
 | Button | What it does |
 |---|---|
 | Layers | Map style: **Standard**, **Clean**, **Black & white** or **Terrain**. Each follows the app's light or dark theme |
-| Street View | Opens Google Maps' Street View where the car is |
 | Crosshair | Puts the car back in the middle |
 
 <br clear="right">

@@ -16,7 +16,7 @@
 
 | Page | What it covers |
 |---|---|
-| [Map](Map) | Where the car is, the car card, map styles, Street View, directions and sharing |
+| [Map](Map) | Where the car is, the car card, map styles, directions and sharing |
 | [Controls](Controls) | Fuel cut, alarm, tracker alerts, speed limit, update rate and every other command |
 | [Trips](Trips) | The last 7 days of driving, and replaying a trip on the map |
 | [Alerts](Alerts) | The alert list, live alerts, and choosing which alerts you get |
