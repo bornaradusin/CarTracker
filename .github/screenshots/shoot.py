@@ -119,9 +119,12 @@ def main():
         fields = [centre for _, _, cls, centre in nodes() if cls.endswith("EditText")]
     if len(fields) < 3:
         raise SystemExit("Sign-in fields not found")
-    tap_at(*fields[0]); type_text("http://10.0.2.2:8082")
-    tap_at(*fields[1]); type_text("demo@cartracker.app")
-    tap_at(*fields[2]); type_text("cartracker-demo")
+    # Look the boxes up again each time: hints appear under them as you type and move the rest down
+    for index, value in enumerate(("http://10.0.2.2:8082", "demo@cartracker.app", "cartracker-demo")):
+        boxes = sorted((centre for _, _, cls, centre in nodes() if cls.endswith("EditText")), key=lambda c: c[1])
+        tap_at(*boxes[index])
+        type_text(value)
+        time.sleep(1)
     shell("input", "keyevent", "111")
     time.sleep(2)
     shot("login")
