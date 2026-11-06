@@ -96,6 +96,8 @@ jobs:
           TAG="v$VERSION"
           if gh release view "$TAG" > /dev/null 2>&1; then
             if [ "$(gh release view "$TAG" --json isDraft -q .isDraft)" = "true" ]; then
+              # The draft's tag follows the newest build, so the source matches the APK
+              gh release edit "$TAG" --target "$GITHUB_SHA"
               # Drop files an earlier build of this version left behind (like a debug APK)
               for old in $(gh release view "$TAG" --json assets -q '.assets[].name'); do
                 [ -f "$old" ] || gh release delete-asset "$TAG" "$old" --yes

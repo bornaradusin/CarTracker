@@ -22,9 +22,10 @@ on:
 permissions:
   contents: write
 
+# One run at a time; a newer one waits rather than stopping the one taking screenshots
 concurrency:
   group: wiki
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   wiki:
