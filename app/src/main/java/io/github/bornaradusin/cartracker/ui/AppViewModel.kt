@@ -50,10 +50,18 @@ import java.time.temporal.ChronoUnit
 
 enum class CarStatus { MOVING, PARKED, OFFLINE }
 
-/** Everything the screens show about one car. */
 /** What a tracker answered to a command. */
 data class TrackerReply(val car: String, val command: String, val text: String)
 
+/** A tracker setting sent to the car, applied in the app only once the tracker confirms it. */
+data class PendingChange(val key: String, val on: Boolean) {
+    companion object {
+        const val ALARM = "alarm"
+        const val AUTO_ARM = "auto_arm"
+    }
+}
+
+/** Everything the screens show about one car. */
 data class CarInfo(
     val device: Device,
     val position: Position?,
@@ -150,6 +158,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** A tracker reply too long for a snackbar (status, settings), shown in a dialog. */
     val reply: StateFlow<TrackerReply?> = _reply.asStateFlow()
     private val replyWatchers = mutableMapOf<Long, Job>()
+
+    private val _pending = MutableStateFlow<Map<Long, PendingChange>>(emptyMap())
+
+    /** Per car: the setting sent to its tracker and not yet confirmed. */
+    val pending: StateFlow<Map<Long, PendingChange>> = _pending.asStateFlow()
 
     private val _busy = MutableStateFlow<String?>(null)
     /** What's being sent right now ("Cut fuel"…), for a spinner. */
@@ -386,14 +399,35 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             say("${car.device.name}'s tracker can't do that.")
             return@launch
         }
-        if (deliver(car, action.label, command, quiet)) {
-            when (action) {
-                Action.ARM, Action.DISARM -> c.settings.updateDevice(car.device.id) {
-                    it.copy(manualArmed = action == Action.ARM, manualAt = System.currentTimeMillis())
-                }
-                Action.AUTO_ARM_ON, Action.AUTO_ARM_OFF -> c.settings.updateDevice(car.device.id) { it.copy(autoArm = action == Action.AUTO_ARM_ON) }
-                else -> Unit
+        val change = when (action) {
+            Action.ARM, Action.DISARM -> PendingChange(PendingChange.ALARM, action == Action.ARM)
+            Action.AUTO_ARM_ON, Action.AUTO_ARM_OFF -> PendingChange(PendingChange.AUTO_ARM, action == Action.AUTO_ARM_ON)
+            Action.VIBRATION_ON, Action.VIBRATION_OFF -> PendingChange(AlertKind.VIBRATION.key, action == Action.VIBRATION_ON)
+            Action.LOW_BATTERY_ON, Action.LOW_BATTERY_OFF -> PendingChange(AlertKind.LOW_BATTERY.key, action == Action.LOW_BATTERY_ON)
+            Action.UNPLUGGED_ON, Action.UNPLUGGED_OFF -> PendingChange(AlertKind.UNPLUGGED.key, action == Action.UNPLUGGED_ON)
+            else -> null
+        }
+        // MiCODUS trackers answer every command, so their settings wait for that answer.
+        // Other trackers may never answer, so theirs change straight away.
+        if (change == null || car.kind != TrackerKind.MICODUS) {
+            if (deliver(car, action.label, command, quiet) && change != null) applyChange(car, change)
+            return@launch
+        }
+        if (!car.device.online) {
+            say("${car.device.name} is offline, so nothing was changed. Try again once it's back online.")
+            return@launch
+        }
+        deliver(car, action.label, command, quiet = false, change = change)
+    }
+
+    /** Saves a tracker setting the tracker has confirmed (or that can't be confirmed). */
+    private suspend fun applyChange(car: CarInfo, change: PendingChange) {
+        when (change.key) {
+            PendingChange.ALARM -> c.settings.updateDevice(car.device.id) {
+                it.copy(manualArmed = change.on, manualAt = System.currentTimeMillis())
             }
+            PendingChange.AUTO_ARM -> c.settings.updateDevice(car.device.id) { it.copy(autoArm = change.on) }
+            else -> AlertKind.entries.firstOrNull { it.key == change.key }?.let { c.settings.setAlertKind(it, change.on) }
         }
     }
 
@@ -424,17 +458,35 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         sendAdvanced(car, text.trim(), command)
     }
 
-    private suspend fun deliver(car: CarInfo, label: String, command: JsonObject, quiet: Boolean, preferSaved: Boolean = true): Boolean {
+    private suspend fun deliver(
+        car: CarInfo,
+        label: String,
+        command: JsonObject,
+        quiet: Boolean,
+        preferSaved: Boolean = true,
+        change: PendingChange? = null,
+    ): Boolean {
+        if (_pending.value.containsKey(car.device.id)) {
+            say("Still waiting for ${car.device.name} to confirm the last change. Try again in a moment.")
+            return false
+        }
         _busy.value = label
         return try {
             val o = options(car.device.id)
             val toSend = if (preferSaved) TrackerCommands.preferSaved(command, o.saved, car.device.id) else command
             val sentAt = Instant.now()
             val now = api.sendCommand(toSend)
+            if (change != null) _pending.update { it + (car.device.id to change) }
             if (!quiet) {
-                say(if (now) "$label: sent to ${car.device.name}. Waiting for it to confirm…" else "${car.device.name} is offline. It gets this when it next connects.")
+                say(
+                    when {
+                        now -> "$label: sent to ${car.device.name}. Waiting for it to confirm…"
+                        change != null -> "${car.device.name} went offline. It gets this when it reconnects, and the setting changes once it confirms."
+                        else -> "${car.device.name} is offline. It gets this when it next connects."
+                    },
+                )
             }
-            if (now) watchReply(car, label, sentAt)
+            watchReply(car, label, sentAt, if (now) 90_000L else 15 * 60_000L, change)
             true
         } catch (e: ApiException) {
             say(
@@ -453,26 +505,36 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Waits up to 90 seconds for the tracker to answer [label] (Traccar records it as a
-     * "commandResult" event) and shows the answer. Commands sent while the car is offline are
-     * answered later; those replies come as a notification instead.
+     * Waits for the tracker to answer [label] (Traccar records the answer as a "commandResult"
+     * event) and shows it. A [change] is saved only once the tracker confirms it; with no answer
+     * in time, nothing changes.
      */
-    private fun watchReply(car: CarInfo, label: String, sentAt: Instant) {
-        replyWatchers.remove(car.device.id)?.cancel()
-        replyWatchers[car.device.id] = viewModelScope.launch {
-            val from = sentAt.minusSeconds(5)
-            val until = System.currentTimeMillis() + 90_000
-            while (isActive && System.currentTimeMillis() < until) {
-                delay(3_000)
-                val event = runCatching { api.events(listOf(car.device.id), from, Instant.now().plusSeconds(60)) }
-                    .getOrNull()
-                    ?.lastOrNull { it.type == "commandResult" }
-                    ?: continue
-                val text = TrackerCommands.readableReply(event.attributes.str("result").orEmpty())
-                if (text.isEmpty()) continue
-                if (text.length <= 60 && '\n' !in text) say("${car.device.name}: $text")
-                else _reply.value = TrackerReply(car.device.name, label, text)
-                return@launch
+    private fun watchReply(car: CarInfo, label: String, sentAt: Instant, windowMs: Long, change: PendingChange?) {
+        val id = car.device.id
+        replyWatchers.remove(id)?.cancel()
+        replyWatchers[id] = viewModelScope.launch {
+            try {
+                val from = sentAt.minusSeconds(5)
+                val until = System.currentTimeMillis() + windowMs
+                while (isActive && System.currentTimeMillis() < until) {
+                    delay(3_000)
+                    val event = runCatching { api.events(listOf(id), from, Instant.now().plusSeconds(60)) }
+                        .getOrNull()
+                        ?.lastOrNull { it.type == "commandResult" }
+                        ?: continue
+                    val raw = event.attributes.str("result").orEmpty()
+                    val text = TrackerCommands.readableReply(raw)
+                    if (text.isEmpty()) continue
+                    val failed = TrackerCommands.isFailure(raw)
+                    if (change != null && !failed) applyChange(car, change)
+                    val shown = if (change != null && failed) "$text. Nothing was changed." else text
+                    if (shown.length <= 60 && '\n' !in shown) say("${car.device.name}: $shown")
+                    else _reply.value = TrackerReply(car.device.name, label, shown)
+                    return@launch
+                }
+                if (change != null && isActive) say("${car.device.name} didn't confirm, so nothing was changed.")
+            } finally {
+                if (change != null) _pending.update { it - id }
             }
         }
     }
@@ -484,16 +546,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // ---------- alerts set on the tracker ----------
 
     fun setAlertKind(kind: AlertKind, on: Boolean, car: CarInfo? = null) = viewModelScope.launch {
-        c.settings.setAlertKind(kind, on)
-        if (car != null && car.kind == TrackerKind.MICODUS) {
-            val action = when (kind) {
+        val action = if (car != null && car.kind == TrackerKind.MICODUS) {
+            when (kind) {
                 AlertKind.VIBRATION -> if (on) Action.VIBRATION_ON else Action.VIBRATION_OFF
                 AlertKind.LOW_BATTERY -> if (on) Action.LOW_BATTERY_ON else Action.LOW_BATTERY_OFF
                 AlertKind.UNPLUGGED -> if (on) Action.UNPLUGGED_ON else Action.UNPLUGGED_OFF
                 else -> null
             }
-            if (action != null) send(car, action, quiet = true)
+        } else {
+            null
         }
+        // Alerts the tracker raises itself change once it confirms; the rest are Traccar's and change now
+        if (car != null && action != null) send(car, action) else c.settings.setAlertKind(kind, on)
     }
 
     /** Speeding alerts come from Traccar itself: the car's speedLimit attribute (in knots); 0 turns them off. */

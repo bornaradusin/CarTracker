@@ -155,6 +155,11 @@ object TrackerCommands {
         }
     }
 
+    /** True when a reply says the command didn't work ("ERROR", "FAILED", "INVALID"…). */
+    fun isFailure(reply: String): Boolean =
+        Regex("\\b(error|fail|failed|failure|invalid|wrong|not support(ed)?|unknown)\\b", RegexOption.IGNORE_CASE)
+            .containsMatchIn(reply)
+
     fun hex(text: String): String = text.toByteArray(Charsets.US_ASCII).joinToString("") { "%02x".format(it) }
 
     /** Readable names for Traccar's command types, for the advanced list. */

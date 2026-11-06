@@ -47,6 +47,7 @@ import io.github.bornaradusin.cartracker.data.TrackerKind
 import io.github.bornaradusin.cartracker.data.UpdateRate
 import io.github.bornaradusin.cartracker.ui.AppViewModel
 import io.github.bornaradusin.cartracker.ui.CarInfo
+import io.github.bornaradusin.cartracker.ui.PendingChange
 import io.github.bornaradusin.cartracker.ui.components.BigButton
 import io.github.bornaradusin.cartracker.ui.components.ChevronRow
 import io.github.bornaradusin.cartracker.ui.components.QuietButton
@@ -64,6 +65,7 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
     val car by vm.selectedCar.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val options by vm.commandOptions.collectAsStateWithLifecycle()
+    val pendingChanges by vm.pending.collectAsStateWithLifecycle()
     var confirm by remember { mutableStateOf<Action?>(null) }
     var rateDialog by remember { mutableStateOf(false) }
 
@@ -87,6 +89,9 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
         }
         val types = options[info.device.id]?.types.orEmpty()
         val micodus = info.kind == TrackerKind.MICODUS
+        val pending = pendingChanges[info.device.id]
+        val waitingHint = "Waiting for ${info.device.name} to confirm…"
+        fun hintFor(key: String, normal: String) = if (pending?.key == key) waitingHint else normal
 
         // ---- immobiliser
         SectionCard {
@@ -122,18 +127,20 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
             SectionCard("Alarm") {
                 ToggleRow(
                     "Alarm",
-                    if (info.armed) "Armed: alerts you if the car is moved or shaken" else "Alerts you if the car is moved or shaken",
+                    hintFor(PendingChange.ALARM, if (info.armed) "Armed: alerts you if the car is moved or shaken" else "Alerts you if the car is moved or shaken"),
                     checked = info.armed,
                     onChange = { on -> vm.send(info, if (on) Action.ARM else Action.DISARM) },
                     divider = micodus,
+                    enabled = pending == null,
                 )
                 if (micodus) {
                     ToggleRow(
                         "Arm automatically",
-                        "1 minute after the ignition goes off",
+                        hintFor(PendingChange.AUTO_ARM, "1 minute after the ignition goes off"),
                         checked = info.prefs.autoArm,
                         onChange = { on -> vm.send(info, if (on) Action.AUTO_ARM_ON else Action.AUTO_ARM_OFF) },
                         divider = false,
+                        enabled = pending == null,
                     )
                 }
             }
@@ -155,9 +162,10 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 SpeedStepper(info.prefs.speedLimit) { vm.setSpeedLimit(info, it) }
             }
             ToggleRow(
-                AlertKind.VIBRATION.title, AlertKind.VIBRATION.hint,
+                AlertKind.VIBRATION.title, hintFor(AlertKind.VIBRATION.key, AlertKind.VIBRATION.hint),
                 checked = AlertKind.VIBRATION.key in settings.alertKinds,
                 onChange = { vm.setAlertKind(AlertKind.VIBRATION, it, info) },
+                enabled = !micodus || pending == null,
             )
             ToggleRow(
                 AlertKind.IGNITION.title, AlertKind.IGNITION.hint,
@@ -165,15 +173,17 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 onChange = { vm.setAlertKind(AlertKind.IGNITION, it, info) },
             )
             ToggleRow(
-                AlertKind.LOW_BATTERY.title, if (micodus) "Below 11.5 V" else AlertKind.LOW_BATTERY.hint,
+                AlertKind.LOW_BATTERY.title, hintFor(AlertKind.LOW_BATTERY.key, if (micodus) "Below 11.5 V" else AlertKind.LOW_BATTERY.hint),
                 checked = AlertKind.LOW_BATTERY.key in settings.alertKinds,
                 onChange = { vm.setAlertKind(AlertKind.LOW_BATTERY, it, info) },
+                enabled = !micodus || pending == null,
             )
             ToggleRow(
-                AlertKind.UNPLUGGED.title, AlertKind.UNPLUGGED.hint,
+                AlertKind.UNPLUGGED.title, hintFor(AlertKind.UNPLUGGED.key, AlertKind.UNPLUGGED.hint),
                 checked = AlertKind.UNPLUGGED.key in settings.alertKinds,
                 onChange = { vm.setAlertKind(AlertKind.UNPLUGGED, it, info) },
                 divider = false,
+                enabled = !micodus || pending == null,
             )
         }
 

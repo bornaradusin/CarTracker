@@ -61,6 +61,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.bornaradusin.cartracker.data.Action
 import io.github.bornaradusin.cartracker.ui.AppViewModel
 import io.github.bornaradusin.cartracker.ui.CarInfo
+import io.github.bornaradusin.cartracker.ui.PendingChange
 import io.github.bornaradusin.cartracker.ui.CarStatus
 import io.github.bornaradusin.cartracker.ui.components.MapButton
 import io.github.bornaradusin.cartracker.ui.components.StatTile
@@ -87,6 +88,7 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
     val fences by vm.geofences.collectAsStateWithLifecycle()
     val unread by vm.unreadAlerts.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
+    val pendingChanges by vm.pending.collectAsStateWithLifecycle()
     val mapStyle = MapStyle.named(settings.mapStyle)
 
     var sheetHeight by remember { mutableIntStateOf(0) }
@@ -223,6 +225,7 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
                 CarCard(
                     info = info,
                     busy = busy,
+                    alarmPending = pendingChanges[info.device.id]?.key == PendingChange.ALARM,
                     onImmobiliser = { fuelDialog = true },
                     onAlarm = { vm.send(info, if (info.armed) Action.DISARM else Action.ARM) },
                     onDirections = {
@@ -268,6 +271,7 @@ private fun StyleSwatch(style: MapStyle, c: AppColors) {
 private fun CarCard(
     info: CarInfo,
     busy: String?,
+    alarmPending: Boolean,
     onImmobiliser: () -> Unit,
     onAlarm: () -> Unit,
     onDirections: () -> Unit,
@@ -339,12 +343,12 @@ private fun CarCard(
             )
             QuickAction(
                 icon = Ic.shieldCheck,
-                label = if (info.armed) "Armed" else "Alarm off",
+                label = if (alarmPending) "Confirming…" else if (info.armed) "Armed" else "Alarm off",
                 tile = if (info.armed) c.accent else c.surface2,
                 iconColor = if (info.armed) c.onAccent else c.ink,
                 labelColor = if (info.armed) c.accentText else c.ink,
                 bold = info.armed,
-                working = busy != null && busy.startsWith("Alarm"),
+                working = alarmPending || (busy != null && busy.startsWith("Alarm")),
                 onClick = onAlarm,
             )
             QuickAction(Ic.navigation, "Directions", c.accentTint, c.accentText, c.ink, false, false, onDirections)
