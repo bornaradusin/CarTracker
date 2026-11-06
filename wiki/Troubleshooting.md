@@ -26,9 +26,9 @@ The server is reading the tracker's time in the wrong time zone. For MiCODUS tra
 
 The tracker hasn't reported for a while. It may be out of mobile coverage, in an underground car park, or switched off. It reports again once it's back in coverage.
 
-### "Finding the address…" doesn't go away
+### The address shows as numbers
 
-Street names come from your phone's own address lookup, which needs an internet connection. If the server itself works out addresses (Traccar's geocoder), the app uses those instead.
+Street names come from your phone's own address lookup, or from OpenStreetMap when the phone has none. Both need an internet connection; without one, the app shows the car's coordinates instead. If the server itself works out addresses (Traccar's geocoder), the app uses those.
 
 ### An update won't install
 

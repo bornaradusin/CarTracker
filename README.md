@@ -30,7 +30,7 @@ Sign in with your server's address and your Traccar email and password. The app 
 
 ## Privacy
 
-CarTracker talks only to your Traccar server, to [OpenFreeMap](https://openfreemap.org) and [OpenTopoMap](https://opentopomap.org) for map tiles, and to Android's built-in geocoder for street names. There is no analytics, no tracking and no account with anyone but your own server.
+CarTracker talks only to your Traccar server, to [OpenFreeMap](https://openfreemap.org) and [OpenTopoMap](https://opentopomap.org) for map tiles, and for street names to Android's built-in address lookup or, when that has none, [OpenStreetMap](https://nominatim.openstreetmap.org). There is no analytics, no tracking and no account with anyone but your own server.
 
 ## Building
 

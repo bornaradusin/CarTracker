@@ -107,6 +107,10 @@ jobs:
               echo "::notice::$TAG is already published, so it was left alone. Raise versionName for a new draft."
             fi
           else
+            # One draft at a time: a new version replaces drafts of older ones that were never published
+            for old in $(gh release list --limit 50 --json tagName,isDraft -q '.[] | select(.isDraft) | .tagName'); do
+              [ "$old" = "$TAG" ] || gh release delete "$old" --yes
+            done
             gh release create "$TAG" CarTracker-*.apk SHA256SUMS.txt --draft --target "$GITHUB_SHA" \
               --title "CarTracker $VERSION" --notes "CarTracker $VERSION"
           fi

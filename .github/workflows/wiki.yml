@@ -4,17 +4,11 @@
 # Traccar filled with a made-up car (.github/screenshots/seed.py), so no real car is ever shown.
 # The pages are the Markdown files in wiki/. Both go to the repo's GitHub wiki.
 #
-# Runs when the wiki or the screenshot scripts change, when a release is published, or by hand.
+# Runs when a release is published, so the wiki always matches the released app, or by hand.
 # The wiki has to exist first: on GitHub, open the Wiki tab and save the first page once.
 name: Wiki
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "wiki/**"
-      - ".github/screenshots/**"
-      - ".github/workflows/wiki.yml"
   release:
     types: [published]
   workflow_dispatch:
