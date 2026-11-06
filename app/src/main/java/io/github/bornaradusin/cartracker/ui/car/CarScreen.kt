@@ -380,7 +380,7 @@ private fun CarCard(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             StatTile(
                 "Ignition",
                 when (info.ignition) {
@@ -396,6 +396,14 @@ private fun CarCard(
                 StatTile("Parked for", info.parkedSince?.let { Format.duration(Instant.now().toEpochMilli() - it.toEpochMilli()) } ?: "–", Modifier.weight(1f))
             }
             StatTile("Today", info.todayMeters?.let { Format.distance(it) } ?: "–", Modifier.weight(1f))
+            val volts = info.position?.power
+            StatTile(
+                "Battery",
+                volts?.let { String.format(java.util.Locale.US, "%.1f V", it) } ?: "–",
+                Modifier.weight(1f),
+                // A 12 V car battery below 11.8 V while parked is getting low
+                valueColor = if (volts != null && volts in 1.0..11.8) c.warnText else null,
+            )
         }
 
         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {

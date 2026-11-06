@@ -80,6 +80,9 @@ data class Position(
     val blocked: Boolean? get() = attributes.bool("blocked")
     val motion: Boolean? get() = attributes.bool("motion")
     val armed: Boolean? get() = attributes.bool("armed")
+
+    /** The car battery's voltage, as the tracker measures it. */
+    val power: Double? get() = attributes.num("power")
     val speedKmh: Double get() = speed * 1.852
     val hasFix: Boolean get() = latitude != 0.0 || longitude != 0.0
 }

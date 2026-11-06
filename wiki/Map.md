@@ -28,7 +28,7 @@ The **Car** tab shows your car on the map, with its card at the bottom.
 <img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/car-card-down.png" width="270" align="right" alt="The card slid down">
 
 - The car's **name**, the **street** it's on, and whether it's **Moving**, **Parked** or **Offline**, with when it last reported.
-- **Ignition**, **Speed**, distance driven **Today**, and how long it's been **Parked for**.
+- **Ignition**, **Speed**, distance driven **Today**, how long it's been **Parked for**, and the car's **Battery** voltage. The voltage turns orange below 11.8 V, when a 12 V battery is getting low.
 - **Immobilise**: cut or restore the fuel. The button turns orange while the fuel is cut and the car can't start. See [Controls](Controls).
 - **Alarm**: arm or disarm. It's coloured while the alarm is armed, and shows **Confirming…** until the tracker confirms.
 - **Directions**: turn-by-turn to the car in Google Maps.

@@ -1,5 +1,8 @@
 package io.github.bornaradusin.cartracker.ui.components
 
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -151,17 +154,31 @@ fun ChevronRow(title: String, hint: String? = null, value: String? = null, divid
 
 /** Small grey tile: label above a value. */
 @Composable
-fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
+@OptIn(ExperimentalFoundationApi::class)
+fun StatTile(label: String, value: String, modifier: Modifier = Modifier, valueColor: Color? = null) {
     val c = LocalAppColors.current
+    val labelStyle = MaterialTheme.typography.bodySmall
+    val valueStyle = MaterialTheme.typography.titleMedium
     Column(
         modifier
             .clip(RoundedCornerShape(16.dp))
             .background(c.surface2)
-            .padding(12.dp),
+            .padding(horizontal = 10.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1)
-        Text(value, style = MaterialTheme.typography.titleMedium, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Shrinks to fit, so four tiles fit side by side on any phone
+        BasicText(
+            label,
+            style = labelStyle.copy(color = c.muted),
+            maxLines = 1,
+            autoSize = TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = labelStyle.fontSize),
+        )
+        BasicText(
+            value,
+            style = valueStyle.copy(color = valueColor ?: c.ink),
+            maxLines = 1,
+            autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = valueStyle.fontSize),
+        )
     }
 }
 
