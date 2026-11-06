@@ -41,3 +41,7 @@ The maps load from the internet. Check your connection, or try another style fro
 ### My location doesn't show
 
 Tap the crosshair button on the map and allow location. If you said no before, allow it in Android's settings: **Settings → Apps → CarTracker → Permissions → Location**.
+
+### Notifications CarTracker doesn't explain
+
+CarTracker only notifies for the alert types switched on under **More → Notifications → Which alerts to get**, and they show in its Alerts tab. If you get others (like "started moving" or "stopped"), they come from Traccar's own notifications. To stop them, open Traccar's web page and remove or change them under **Settings → Notifications**. You can also uninstall the Traccar Manager app if it's on your phone.

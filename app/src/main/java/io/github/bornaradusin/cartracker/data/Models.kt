@@ -98,6 +98,16 @@ data class Event(
     val attributes: JsonObject = EmptyObject,
 )
 
+/** One stop from Traccar's stops report. The last one runs to the newest position while the car is still parked. */
+@Serializable
+data class Stop(
+    val deviceId: Long = 0,
+    val startTime: String? = null,
+    val endTime: String? = null,
+    /** Milliseconds. */
+    val duration: Long = 0,
+)
+
 @Serializable
 data class Trip(
     val deviceId: Long = 0,

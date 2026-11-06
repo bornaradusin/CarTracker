@@ -393,7 +393,12 @@ private fun CarCard(
             if (info.status == CarStatus.MOVING) {
                 StatTile("Speed", "${info.speedKmh} km/h", Modifier.weight(1f))
             } else {
-                StatTile("Parked for", info.parkedSince?.let { Format.duration(Instant.now().toEpochMilli() - it.toEpochMilli()) } ?: "–", Modifier.weight(1f))
+                StatTile(
+                    "Parked for",
+                    info.parkedSince?.let { Format.duration(Instant.now().toEpochMilli() - it.toEpochMilli()) }
+                        ?: if (info.status == CarStatus.PARKED) "< 5 min" else "–",
+                    Modifier.weight(1f),
+                )
             }
             StatTile("Today", info.todayMeters?.let { Format.distance(it) } ?: "–", Modifier.weight(1f))
             val volts = info.position?.power

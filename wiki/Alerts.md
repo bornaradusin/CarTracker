@@ -5,7 +5,7 @@
 <img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/alerts-dark.png" width="260" alt="Alerts, dark">
 </p>
 
-The **Alerts** tab lists the last 7 days of alerts, newest first, grouped by day, with where each happened.
+The **Alerts** tab lists the last 7 days of alerts, newest first, grouped by day, with where each happened. It shows the same alert types you get notifications for: switch one off under [Which alerts to get](#which-alerts-to-get) and it leaves the list and the badge too.
 
 - **Filters**: All, Ignition, Places, Speed or Alarm.
 - **Refresh**: checks the server now.
@@ -41,5 +41,5 @@ With live alerts off, the app checks for new alerts every 15 minutes instead.
 | SOS and tampering | Panic button, tracker removed or tampered with |
 | Other tracker alarms | Anything else the tracker raises |
 | Tracker replies | The tracker confirming a command, like fuel cut or alarm on |
-| Tracker offline | The tracker stops reporting (off at first) |
+| Tracker offline and back online | The tracker stops reporting, and when it's back (off at first) |
 | Started and stopped moving | Every trip's start and end (off at first) |

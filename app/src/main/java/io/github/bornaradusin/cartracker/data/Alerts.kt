@@ -11,7 +11,7 @@ enum class AlertKind(val key: String, val title: String, val hint: String, val o
     SOS("sos", "SOS and tampering", "Panic button, tracker removed or tampered with", true),
     OTHER_ALARMS("other_alarms", "Other tracker alarms", "Anything else the tracker raises", true),
     FUEL("fuel", "Tracker replies", "The tracker confirming a command, like fuel cut or alarm on", true),
-    OFFLINE("offline", "Tracker offline", "The tracker stops reporting", false),
+    OFFLINE("offline", "Tracker offline and back online", "The tracker stops reporting, and when it's back", false),
     MOVING("moving", "Started and stopped moving", "Every trip's start and end", false);
 
     companion object {
@@ -21,7 +21,7 @@ enum class AlertKind(val key: String, val title: String, val hint: String, val o
             "ignitionOn", "ignitionOff" -> IGNITION
             "geofenceEnter", "geofenceExit" -> PLACES
             "deviceOverspeed" -> SPEEDING
-            "deviceOffline" -> OFFLINE
+            "deviceOffline", "deviceOnline" -> OFFLINE
             "deviceMoving", "deviceStopped" -> MOVING
             "commandResult", "queuedCommandSent" -> FUEL
             "alarm" -> when (event.attributes.str("alarm")) {

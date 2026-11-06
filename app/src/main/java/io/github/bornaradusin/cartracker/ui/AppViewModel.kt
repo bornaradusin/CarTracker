@@ -1,5 +1,6 @@
 package io.github.bornaradusin.cartracker.ui
 
+import kotlinx.coroutines.flow.drop
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -226,6 +227,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 now.value = Instant.now()
             }
         }
+        // The list and badge follow "Which alerts to get"
+        viewModelScope.launch {
+            settings.map { it.alertKinds }.distinctUntilChanged().drop(1).collect { refreshAlertsQuietly() }
+        }
         viewModelScope.launch {
             live.updates.debounce(20_000).collect {
                 val id = selectedId.value
@@ -370,9 +375,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         runCatching { api.summary(deviceId, start, nowInstant) }.getOrNull()?.firstOrNull()?.let { s ->
             todayMeters.update { it + (deviceId to s.distance) }
         }
-        runCatching { api.trips(deviceId, nowInstant.minus(7, ChronoUnit.DAYS), nowInstant) }.getOrNull()
-            ?.mapNotNull { Format.parse(it.endTime) }?.maxOrNull()
-            ?.let { end -> parkedSince.update { it + (deviceId to end) } }
+        // Parked since the last drive ended: the start of Traccar's current stop. Traccar only closes a
+        // drive after the car has stood still for a few minutes; until then there's no stop yet.
+        val from = nowInstant.minus(7, ChronoUnit.DAYS)
+        val stops = runCatching { api.stops(deviceId, from, nowInstant) }.getOrNull() ?: return
+        val trips = runCatching { api.trips(deviceId, from, nowInstant) }.getOrNull() ?: return
+        val lastDriveEnd = trips.mapNotNull { Format.parse(it.endTime) }.maxOrNull()
+        val stopStart = stops.mapNotNull { Format.parse(it.startTime) }.maxOrNull()
+        val current = stopStart?.takeIf { lastDriveEnd == null || !it.isBefore(lastDriveEnd.minusSeconds(60)) }
+        parkedSince.update { if (current != null) it + (deviceId to current) else it - deviceId }
     }
 
     // ---------- commands ----------
@@ -684,9 +695,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val names = devs.associate { it.id to it.name }
             val places = _geofences.value.values.flatten().associate { it.id to it.name }
             val cleared = settings.value.clearedEventId
+            val kinds = settings.value.alertKinds
             val items = events
                 .filter { e -> e.id > cleared }
-                .filter { e -> AlertKind.of(e) != null || e.type == "deviceOnline" }
+                // Only the alert types switched on, the same as phone notifications
+                .filter { e -> AlertKind.of(e)?.key?.let { it in kinds } == true }
                 .sortedByDescending { it.id }
                 .take(300)
                 .map { e ->

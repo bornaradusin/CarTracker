@@ -146,6 +146,9 @@ class TraccarApi {
     suspend fun trips(deviceId: Long, from: Instant, to: Instant): List<Trip> =
         AppJson.decodeFromString(get("/api/reports/trips", range(listOf(deviceId), from, to)))
 
+    suspend fun stops(deviceId: Long, from: Instant, to: Instant): List<Stop> =
+        AppJson.decodeFromString(get("/api/reports/stops", range(listOf(deviceId), from, to)))
+
     suspend fun route(deviceId: Long, from: Instant, to: Instant): List<Position> =
         AppJson.decodeFromString(get("/api/reports/route", range(listOf(deviceId), from, to)))
 
