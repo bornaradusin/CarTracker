@@ -12,3 +12,5 @@ captures/
 *.keystore
 *.jks
 *.jks.base64.txt
+__pycache__/
+*.pyc
