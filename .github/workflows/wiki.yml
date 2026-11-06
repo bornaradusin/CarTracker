@@ -102,6 +102,8 @@ jobs:
           if-no-files-found: ignore
 
       - name: Publish the wiki
+        # The pages go up even if a screenshot failed; the pictures from the last good run stay
+        if: always()
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -109,10 +111,16 @@ jobs:
             echo "::error::The wiki doesn't exist yet. On GitHub, open the Wiki tab, save the first page once, then run this again."
             exit 1
           fi
-          find wiki-repo -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          find wiki-repo -mindepth 1 -maxdepth 1 ! -name .git ! -name images -exec rm -rf {} +
           cp -r wiki/. wiki-repo/
           mkdir -p wiki-repo/images
-          cp wiki-images/*.png wiki-repo/images/
+          if ls wiki-images/*.png > /dev/null 2>&1; then
+            # Only a complete set replaces the pictures, so a run that stopped part-way leaves the old ones
+            if [ ! -f wiki-images/failed-here.png ]; then
+              rm -f wiki-repo/images/*.png
+            fi
+            find wiki-images -name '*.png' ! -name failed-here.png -exec cp {} wiki-repo/images/ \;
+          fi
           cd wiki-repo
           git config user.name "bornaradusin"
           git config user.email "43745159+bornaradusin@users.noreply.github.com"

@@ -70,6 +70,15 @@ def type_text(value):
     time.sleep(0.5)
 
 
+def hide_keyboard():
+    """Back closes the keyboard, but only press it while the keyboard is up, or it leaves the app."""
+    for _ in range(3):
+        if "mInputShown=true" not in shell("dumpsys", "input_method"):
+            return
+        shell("input", "keyevent", "4")
+        time.sleep(1.5)
+
+
 def swipe(x1, y1, x2, y2, ms=400):
     shell("input", "swipe", str(x1), str(y1), str(x2), str(y2), str(ms))
     time.sleep(1.5)
@@ -125,8 +134,7 @@ def main():
         tap_at(*boxes[index])
         type_text(value)
         time.sleep(1)
-    shell("input", "keyevent", "111")
-    time.sleep(2)
+    hide_keyboard()
     shot("login")
     tap("Sign in")
 
