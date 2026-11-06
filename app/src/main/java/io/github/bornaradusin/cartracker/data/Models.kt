@@ -128,7 +128,12 @@ data class Geofence(
     val name: String = "",
     val description: String? = null,
     val area: String = "",
+    val attributes: JsonObject = EmptyObject,
 ) {
+    /** The place's icon ("home", "work", "pin"…), saved in its attributes. */
+    val icon: String
+        get() = attributes.str("icon") ?: if (name.equals("home", ignoreCase = true)) "home" else "pin"
+
     /** A circle as Traccar writes it: CIRCLE (lat lon, radius). Other shapes return null. */
     val circle: Circle?
         get() {

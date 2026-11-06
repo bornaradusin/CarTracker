@@ -2,96 +2,108 @@ package io.github.bornaradusin.cartracker.ui.map
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
-import android.graphics.Matrix
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
 import android.graphics.RectF
+import android.graphics.Shader
+import androidx.compose.foundation.Image
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
-import androidx.core.graphics.PathParser
-import io.github.bornaradusin.cartracker.ui.theme.Ic
-import io.github.bornaradusin.cartracker.ui.theme.MarkerColors
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.core.graphics.ColorUtils
+import io.github.bornaradusin.cartracker.ui.theme.Palette
 
 /**
- * Draws a car's map icon: its shape (circle, square, pin or arrow) in its colour, with a white border
- * and the vehicle symbol. Arrows point north here; the map turns them to the car's heading.
+ * Draws a car's map pin: a dark circle with a glowing ring and a small point at the bottom, in the
+ * glow colour, and the vehicle inside in the car colour. The point's tip is the car's position.
  */
 object MarkerFactory {
 
-    fun key(icon: String, color: String, shape: String) = "marker-$icon-$color-$shape"
+    fun key(icon: String, carColor: Color, glowColor: Color) = "pin-$icon-${Palette.hex(carColor)}-${Palette.hex(glowColor)}"
 
-    fun bitmap(context: Context, icon: String, color: String, shape: String, sizeDp: Float = 42f): Bitmap {
-        val density = context.resources.displayMetrics.density
-        val size = sizeDp * density
-        val canvasSize = (size * 1.7f).toInt()
-        val bitmap = Bitmap.createBitmap(canvasSize, canvasSize, Bitmap.Config.ARGB_8888)
+    /** [sizeDp] is the circle's diameter; the glow and the point add to it. */
+    fun bitmap(context: Context, icon: String, carColor: Color, glowColor: Color, sizeDp: Float = 46f): Bitmap {
+        val dp = context.resources.displayMetrics.density
+        val d = sizeDp * dp
+        val r = d / 2f
+        val glow = d * 0.16f
+        val pointerH = d * 0.17f
+        val pointerW = d * 0.24f
+        val width = (d + glow * 2).toInt()
+        val height = (glow + d + pointerH + 2 * dp).toInt()
+        val cx = width / 2f
+        val cy = glow + r
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val cx = canvasSize / 2f
-        val cy = canvasSize / 2f
-        val half = size / 2f
+        val gc = glowColor.toArgb()
+        val bright = ColorUtils.blendARGB(gc, android.graphics.Color.WHITE, 0.45f)
 
-        val fill = MarkerColors.named(color).toArgb()
-        val ink = MarkerColors.ink(color).toArgb()
-        val border = if (color == "White") 0xFF3B4656.toInt() else 0xFFFFFFFF.toInt()
-        val borderWidth = 3f * density
-
-        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            this.color = fill
-            setShadowLayer(4f * density, 0f, 2f * density, 0x45000000)
+        val pointer = Path().apply {
+            moveTo(cx - pointerW / 2f, cy + r - d * 0.05f)
+            lineTo(cx + pointerW / 2f, cy + r - d * 0.05f)
+            lineTo(cx, cy + r + pointerH)
+            close()
         }
-        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+
+        // Neon glow around the ring and the point
+        canvas.drawCircle(cx, cy, r, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = borderWidth
-            this.color = border
-        }
+            strokeWidth = d * 0.09f
+            color = ColorUtils.setAlphaComponent(gc, 230)
+            maskFilter = BlurMaskFilter(d * 0.08f, BlurMaskFilter.Blur.NORMAL)
+        })
+        canvas.drawPath(pointer, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = ColorUtils.setAlphaComponent(gc, 190)
+            maskFilter = BlurMaskFilter(d * 0.05f, BlurMaskFilter.Blur.NORMAL)
+        })
+        canvas.drawPath(pointer, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(cx, cy + r - d * 0.05f, cx, cy + r + pointerH, bright, gc, Shader.TileMode.CLAMP)
+        })
 
-        val body = Path()
-        when (shape) {
-            "Square" -> body.addRoundRect(RectF(cx - half, cy - half, cx + half, cy + half), size * 0.28f, size * 0.28f, Path.Direction.CW)
-            "Pin" -> {
-                val r = half
-                val small = size * 0.1f
-                body.addRoundRect(
-                    RectF(cx - half, cy - half, cx + half, cy + half),
-                    floatArrayOf(r, r, r, r, r, r, small, small),
-                    Path.Direction.CW,
-                )
-                body.transform(Matrix().apply { setRotate(-45f, cx, cy) })
-            }
-            else -> body.addCircle(cx, cy, half, Path.Direction.CW)
-        }
+        // Dark disc with the glow fading in from its edge
+        canvas.drawCircle(cx, cy, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF0D1220.toInt() })
+        canvas.drawCircle(cx, cy, r, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = RadialGradient(
+                cx, cy, r,
+                intArrayOf(0, 0, ColorUtils.setAlphaComponent(gc, 140)),
+                floatArrayOf(0f, 0.66f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+        })
 
-        if (shape == "Arrow") {
-            val pointer = Path().apply {
-                moveTo(cx, cy - half - 13f * density)
-                lineTo(cx - 9f * density, cy - half + 2f * density)
-                lineTo(cx + 9f * density, cy - half + 2f * density)
-                close()
-            }
-            canvas.drawPath(pointer, fillPaint.apply { this.color = if (color == "White") border else fill })
-            fillPaint.color = fill
-        }
-        canvas.drawPath(body, fillPaint)
-        canvas.drawPath(body, borderPaint)
+        // The ring, with a lighter core so it reads as lit
+        val ringW = d * 0.04f
+        canvas.drawCircle(cx, cy, r - ringW / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = ringW
+            color = gc
+        })
+        canvas.drawCircle(cx, cy, r - ringW / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = ringW * 0.4f
+            color = ColorUtils.setAlphaComponent(bright, 220)
+        })
 
-        val symbol = runCatching { PathParser.createPathFromPathData(Ic.vehiclePaths[icon] ?: Ic.vehiclePaths.getValue("Car")) }.getOrNull()
-        if (symbol != null) {
-            val iconSize = size * 0.52f
-            val scale = iconSize / 24f
-            symbol.transform(Matrix().apply {
-                setScale(scale, scale)
-                postTranslate(cx - iconSize / 2f, cy - iconSize / 2f)
-            })
-            val symbolPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
-                strokeWidth = 2f * scale
-                strokeCap = Paint.Cap.ROUND
-                strokeJoin = Paint.Join.ROUND
-                this.color = ink
-            }
-            canvas.drawPath(symbol, symbolPaint)
-        }
+        // The vehicle
+        val car = CarImages.bitmap(context, icon, carColor)
+        val ch = d * 0.74f
+        val cw = car.width * ch / car.height
+        canvas.drawBitmap(
+            car,
+            null,
+            RectF(cx - cw / 2f, cy - ch / 2f, cx + cw / 2f, cy + ch / 2f),
+            Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+        )
         return bitmap
     }
 
@@ -110,4 +122,15 @@ object MarkerFactory {
         })
         return bitmap
     }
+}
+
+/** The car's map pin, for use outside the map. [size] is the circle's diameter. */
+@Composable
+fun CarPin(icon: String, carColor: Color, glowColor: Color, size: Dp, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val sizeDp = with(LocalDensity.current) { size.toPx() / density }
+    val bitmap = remember(icon, carColor, glowColor, sizeDp) {
+        MarkerFactory.bitmap(context, icon, carColor, glowColor, sizeDp).asImageBitmap()
+    }
+    Image(bitmap, contentDescription = null, modifier = modifier)
 }

@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.bornaradusin.cartracker.ui.theme.LocalAppColors
+import io.github.bornaradusin.cartracker.ui.theme.Palette
 
 /** A white rounded card holding a settings or controls section. */
 @Composable
@@ -81,7 +82,7 @@ fun SectionTitle(text: String) {
 @Composable
 fun Toggle(checked: Boolean, onChange: (Boolean) -> Unit, label: String, enabled: Boolean = true) {
     val c = LocalAppColors.current
-    val track by animateColorAsState(if (checked) c.accentOutline.takeIf { c.accent == Color.White } ?: c.accent else if (c.dark) Color(0xFF3A4558) else Color(0xFFC9D1DB), label = "track")
+    val track by animateColorAsState(if (checked) c.accentOutline.takeIf { Palette.isNearWhite(c.accent) } ?: c.accent else if (c.dark) Color(0xFF3A4558) else Color(0xFFC9D1DB), label = "track")
     val knob by animateDpAsState(if (checked) 24.dp else 4.dp, label = "knob")
     Box(
         Modifier
@@ -208,7 +209,7 @@ fun BigButton(text: String, modifier: Modifier = Modifier, warning: Boolean = fa
         shape = RoundedCornerShape(16.dp),
         color = bg.copy(alpha = if (enabled) 1f else 0.5f),
         contentColor = fg,
-        border = if (!warning && c.accent == Color.White) BorderStroke(1.5.dp, c.accentOutline) else null,
+        border = if (!warning && Palette.isNearWhite(c.accent)) BorderStroke(1.5.dp, c.accentOutline) else null,
         modifier = modifier.heightIn(min = 54.dp),
     ) {
         Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {

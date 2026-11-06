@@ -6,6 +6,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
@@ -160,13 +162,30 @@ class TraccarApi {
     suspend fun geofences(deviceId: Long): List<Geofence> =
         AppJson.decodeFromString(get("/api/geofences", listOf("deviceId" to deviceId.toString())))
 
-    suspend fun addGeofence(name: String, latitude: Double, longitude: Double, radius: Double): Geofence {
+    suspend fun addGeofence(name: String, latitude: Double, longitude: Double, radius: Double, icon: String): Geofence {
         val json = buildJsonObject {
             put("name", name)
             put("area", "CIRCLE ($latitude $longitude, ${radius.toInt()})")
+            putJsonObject("attributes") { put("icon", icon) }
         }
         val body = AppJson.encodeToString(JsonObject.serializer(), json).toRequestBody(JSON_TYPE)
         return AppJson.decodeFromString(execute(request(baseUrl, "/api/geofences").post(body).build()).body)
+    }
+
+    /** Changes a place's name, size and icon, keeping everything else Traccar stores for it. */
+    suspend fun updateGeofence(id: Long, name: String, latitude: Double, longitude: Double, radius: Double, icon: String): Geofence {
+        val current = AppJson.parseToJsonElement(get("/api/geofences/$id")) as? JsonObject
+            ?: throw ApiException(404, "That place no longer exists.")
+        val attributes = (current["attributes"] as? JsonObject).orEmpty() + ("icon" to JsonPrimitive(icon))
+        val updated = JsonObject(
+            current + mapOf(
+                "name" to JsonPrimitive(name),
+                "area" to JsonPrimitive("CIRCLE ($latitude $longitude, ${radius.toInt()})"),
+                "attributes" to JsonObject(attributes),
+            ),
+        )
+        val body = AppJson.encodeToString(JsonObject.serializer(), updated).toRequestBody(JSON_TYPE)
+        return AppJson.decodeFromString(execute(request(baseUrl, "/api/geofences/$id").put(body).build()).body)
     }
 
     suspend fun deleteGeofence(id: Long) {

@@ -50,8 +50,8 @@ data class MapMarker(
     val longitude: Double,
     val course: Double,
     val icon: String,
-    val color: String,
-    val shape: String,
+    val carColor: Color,
+    val glowColor: Color,
 )
 
 data class MapCircle(val id: Long, val name: String, val latitude: Double, val longitude: Double, val radius: Double)
@@ -158,14 +158,13 @@ fun TrackerMap(
     LaunchedEffect(loaded, markers) {
         val s = loaded ?: return@LaunchedEffect
         markers.forEach { mk ->
-            val key = MarkerFactory.key(mk.icon, mk.color, mk.shape)
-            if (s.getImage(key) == null) s.addImage(key, MarkerFactory.bitmap(context, mk.icon, mk.color, mk.shape))
+            val key = MarkerFactory.key(mk.icon, mk.carColor, mk.glowColor)
+            if (s.getImage(key) == null) s.addImage(key, MarkerFactory.bitmap(context, mk.icon, mk.carColor, mk.glowColor))
         }
         val features = markers.map { mk ->
             Feature.fromGeometry(Point.fromLngLat(mk.longitude, mk.latitude)).apply {
                 addNumberProperty("id", mk.id)
-                addStringProperty("icon", MarkerFactory.key(mk.icon, mk.color, mk.shape))
-                addNumberProperty("rotate", if (mk.shape == "Arrow") mk.course else 0.0)
+                addStringProperty("icon", MarkerFactory.key(mk.icon, mk.carColor, mk.glowColor))
             }
         }
         s.getSourceAs<GeoJsonSource>(SOURCE_MARKERS)?.setGeoJson(FeatureCollection.fromFeatures(features))
@@ -311,8 +310,8 @@ private fun addOverlayLayers(style: Style, routeColor: Color) {
     style.addLayer(
         SymbolLayer(LAYER_MARKERS, SOURCE_MARKERS).withProperties(
             PropertyFactory.iconImage(Expression.get("icon")),
-            PropertyFactory.iconRotate(Expression.get("rotate")),
-            PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+            // The pin's point marks the position
+            PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM),
             PropertyFactory.iconAllowOverlap(true),
             PropertyFactory.iconIgnorePlacement(true),
         ),

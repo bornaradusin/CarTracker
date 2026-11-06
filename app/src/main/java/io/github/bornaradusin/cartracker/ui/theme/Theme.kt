@@ -29,19 +29,8 @@ data class Accent(
 )
 
 object Accents {
-    val all = listOf(
-        Accent("Blue", Color(0xFF1D5BD8), Color.White, Color(0xFFE8EFFC), Color(0xFF1D5BD8), Color(0xFF3D73E0), Color.White, Color(0xFF1A2B4D), Color(0xFF7FA6F5)),
-        Accent("Teal", Color(0xFF0F7B6C), Color.White, Color(0xFFE3F2EF), Color(0xFF0F7B6C), Color(0xFF14907E), Color.White, Color(0xFF123530), Color(0xFF5CC4B3)),
-        Accent("Green", Color(0xFF2F7D3A), Color.White, Color(0xFFE6F2E7), Color(0xFF2F7D3A), Color(0xFF3A9447), Color.White, Color(0xFF173322), Color(0xFF79C788)),
-        Accent("Purple", Color(0xFF6B4FD8), Color.White, Color(0xFFEEEAFB), Color(0xFF6B4FD8), Color(0xFF7C63E6), Color.White, Color(0xFF261F45), Color(0xFFA99BF0)),
-        Accent("Pink", Color(0xFFB83280), Color.White, Color(0xFFF8E6F0), Color(0xFFB83280), Color(0xFFCC3F92), Color.White, Color(0xFF3A1A2C), Color(0xFFEE8CC2)),
-        Accent("Red", Color(0xFFC62828), Color.White, Color(0xFFFBE7E6), Color(0xFFC62828), Color(0xFFD9443B), Color.White, Color(0xFF3A1A1A), Color(0xFFF28B82)),
-        Accent("Yellow", Color(0xFFF2B705), Color(0xFF1A1206), Color(0xFFFDF3D0), Color(0xFFC99700), Color(0xFFF2B705), Color(0xFF1A1206), Color(0xFF3A2F0C), Color(0xFFF5CA4B)),
-        Accent("White", Color(0xFFFFFFFF), Color(0xFF0E1726), Color(0xFFF4F6F8), Color(0xFF3B4656), Color(0xFFFFFFFF), Color(0xFF0E1726), Color(0xFF2A3445), Color(0xFFFFFFFF)),
-        Accent("Graphite", Color(0xFF3B4656), Color.White, Color(0xFFE9ECF0), Color(0xFF3B4656), Color(0xFF8C99AB), Color(0xFF0B1220), Color(0xFF243044), Color(0xFFB8C2D0)),
-    )
-
-    fun named(name: String): Accent = all.firstOrNull { it.name == name } ?: all.first()
+    /** The app colour saved in settings ("#RRGGBB", or a colour name from older versions). */
+    fun named(value: String): Accent = Palette.accent(Palette.parse(value, Palette.AppDefault))
 }
 
 /** The app's own colour tokens, beyond Material's. */
@@ -107,7 +96,7 @@ fun appColors(dark: Boolean, accent: Accent): AppColors = if (dark) {
         accent = accent.light,
         onAccent = accent.onLight,
         accentTint = accent.tintLight,
-        accentText = if (accent.name == "White" || accent.name == "Yellow") accent.outlineLight else accent.light,
+        accentText = if (Palette.isLight(accent.light)) accent.outlineLight else accent.light,
         accentOutline = accent.outlineLight,
         warn = Color(0xFFB4540A),
         warnText = Color(0xFFB4540A),
@@ -117,7 +106,7 @@ fun appColors(dark: Boolean, accent: Accent): AppColors = if (dark) {
     )
 }
 
-val LocalAppColors = staticCompositionLocalOf { appColors(false, Accents.all.first()) }
+val LocalAppColors = staticCompositionLocalOf { appColors(false, Palette.accent(Palette.AppDefault)) }
 
 @Composable
 fun isDark(themeSetting: String): Boolean = when (themeSetting) {
@@ -173,22 +162,3 @@ private val AppTypography = Typography(
     labelMedium = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium),
     labelSmall = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium),
 )
-
-/** Colours for the car's own map icon. */
-object MarkerColors {
-    val all = listOf(
-        "Blue" to Color(0xFF1D5BD8),
-        "Red" to Color(0xFFC62828),
-        "Green" to Color(0xFF2F7D3A),
-        "Orange" to Color(0xFFE8710A),
-        "Purple" to Color(0xFF6B4FD8),
-        "Black" to Color(0xFF0E1726),
-        "White" to Color(0xFFFFFFFF),
-        "Yellow" to Color(0xFFF2B705),
-    )
-
-    fun named(name: String): Color = all.firstOrNull { it.first == name }?.second ?: all.first().second
-
-    /** Dark symbol on light fills, white on the rest. */
-    fun ink(name: String): Color = if (name == "White" || name == "Yellow") Color(0xFF0E1726) else Color.White
-}

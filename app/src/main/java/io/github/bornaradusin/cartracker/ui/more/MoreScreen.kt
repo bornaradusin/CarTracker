@@ -1,5 +1,14 @@
 package io.github.bornaradusin.cartracker.ui.more
 
+import kotlin.math.roundToInt
+import io.github.bornaradusin.cartracker.ui.theme.Palette
+import io.github.bornaradusin.cartracker.ui.map.CarPin
+import io.github.bornaradusin.cartracker.ui.map.CarImages
+import io.github.bornaradusin.cartracker.ui.components.ColorRow
+import io.github.bornaradusin.cartracker.data.Geofence
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.foundation.border
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -60,11 +69,8 @@ import io.github.bornaradusin.cartracker.ui.components.SectionCard
 import io.github.bornaradusin.cartracker.ui.components.SettingRow
 import io.github.bornaradusin.cartracker.ui.components.Swatch
 import io.github.bornaradusin.cartracker.ui.components.ToggleRow
-import io.github.bornaradusin.cartracker.ui.map.MarkerFactory
-import io.github.bornaradusin.cartracker.ui.theme.Accents
 import io.github.bornaradusin.cartracker.ui.theme.Ic
 import io.github.bornaradusin.cartracker.ui.theme.LocalAppColors
-import io.github.bornaradusin.cartracker.ui.theme.MarkerColors
 
 @Composable
 fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
@@ -75,6 +81,7 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
     val fences by vm.geofences.collectAsStateWithLifecycle()
     var renaming by remember { mutableStateOf(false) }
     var addingPlace by remember { mutableStateOf(false) }
+    var editingPlace by remember { mutableStateOf<Geofence?>(null) }
     var signingOut by remember { mutableStateOf(false) }
     var trackerTypeDialog by remember { mutableStateOf(false) }
 
@@ -94,58 +101,40 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
             SectionCard("Your car") {
                 ChevronRow("Name", value = info.device.name) { renaming = true }
                 MarkerPreview(info)
-                Text("Icon on the map", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = c.ink, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
-                Ic.vehicles.keys.chunked(3).forEach { row ->
+                Text("Vehicle", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = c.ink, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
+                CarImages.all.chunked(4).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                        row.forEach { name ->
-                            val selected = info.icon == name
+                        row.forEach { id ->
+                            val selected = info.icon == id
                             Surface(
-                                onClick = { vm.setLook(info, icon = name) },
+                                onClick = { vm.setLook(info, icon = id) },
                                 shape = RoundedCornerShape(16.dp),
-                                color = if (selected) c.accentTint else c.surface,
-                                contentColor = c.ink,
-                                border = BorderStroke(if (selected) 2.dp else 1.5.dp, if (selected) c.accentOutline else c.line),
-                                modifier = Modifier.weight(1f).heightIn(min = 76.dp),
+                                color = if (selected) c.accentTint else c.surface2,
+                                border = BorderStroke(2.dp, if (selected) c.accentOutline else Color.Transparent),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(84.dp)
+                                    .semantics { contentDescription = (CarImages.labels[id] ?: id) + if (selected) ", chosen" else "" },
                             ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.padding(vertical = 8.dp)) {
-                                    Box(
-                                        Modifier.size(36.dp).clip(CircleShape).background(if (selected) c.accent else c.surface2),
-                                        contentAlignment = Alignment.Center,
-                                    ) { Icon(Ic.vehicle(name), null, tint = if (selected) c.onAccent else c.ink2, modifier = Modifier.size(22.dp)) }
-                                    Text(name, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), modifier = Modifier.padding(top = 6.dp))
-                                }
+                                Box(contentAlignment = Alignment.Center) { CarPin(id, info.carColor, info.glowColor, 44.dp) }
                             }
                         }
                     }
                 }
-                Text("Icon colour", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = c.ink, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
-                MarkerColors.all.chunked(4).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
-                        row.forEach { (name, color) ->
-                            Swatch(color, name, info.prefs.color == name, if (name == "White") Color(0xFF3B4656) else color) { vm.setLook(info, color = name) }
-                        }
-                    }
-                }
-                Text("Icon shape", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = c.ink, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
-                    listOf("Circle", "Square", "Pin", "Arrow").forEach { shape ->
-                        val selected = info.prefs.shape == shape
-                        val bitmap = remember(shape, info.icon, info.prefs.color) { MarkerFactory.bitmap(context, info.icon, info.prefs.color, shape, 20f).asImageBitmap() }
-                        Surface(
-                            onClick = { vm.setLook(info, shape = shape) },
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (selected) c.accentTint else c.surface,
-                            contentColor = c.ink,
-                            border = BorderStroke(if (selected) 2.dp else 1.5.dp, if (selected) c.accentOutline else c.line),
-                            modifier = Modifier.weight(1f).heightIn(min = 72.dp),
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.padding(vertical = 6.dp)) {
-                                Image(bitmap, null, modifier = Modifier.size(34.dp))
-                                Text(shape, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold))
-                            }
-                        }
-                    }
-                }
+                ColorRow(
+                    "Car colour",
+                    "The car's paint on the map",
+                    info.carColor,
+                    Palette.CarDefault,
+                    preview = { CarPin(info.icon, it, info.glowColor, 72.dp) },
+                ) { vm.setLook(info, carColor = it) }
+                ColorRow(
+                    "Glow colour",
+                    "The ring and point around the car",
+                    info.glowColor,
+                    Palette.CircleDefault,
+                    preview = { CarPin(info.icon, info.carColor, it, 72.dp) },
+                ) { vm.setLook(info, glowColor = it) }
                 ChevronRow(
                     "Tracker type",
                     "Which commands the app sends",
@@ -164,9 +153,10 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
                     SettingRow(
                         fence.name,
                         fence.circle?.let { "Within ${it.radius.toInt()} m · alerts when ${info.device.name} arrives or leaves" } ?: "Alerts when ${info.device.name} arrives or leaves",
+                        onClick = { editingPlace = fence },
                         leading = {
                             Box(Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(c.accentTint), contentAlignment = Alignment.Center) {
-                                Icon(if (fence.name.equals("home", true)) Ic.home else Ic.pin, null, tint = c.accentText, modifier = Modifier.size(18.dp))
+                                Icon(Ic.place(fence.icon), null, tint = c.accentText, modifier = Modifier.size(18.dp))
                             }
                         },
                     ) {
@@ -223,14 +213,14 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
                     }
                 }
             }
-            Text("Colour", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = c.ink, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp))
-            Accents.all.chunked(5).forEach { row ->
-                Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
-                    row.forEach { accent ->
-                        Swatch(accent.light, accent.name, settings.accent == accent.name, accent.outlineLight) { vm.setAccent(accent.name) }
-                    }
-                }
-            }
+            ColorRow(
+                "App colour",
+                "Buttons, switches, highlights and routes",
+                Palette.parse(settings.accent, Palette.AppDefault),
+                Palette.AppDefault,
+                divider = false,
+                preview = { AppColourPreview(it) },
+            ) { vm.setAccent(Palette.hex(it)) }
         }
 
         SectionCard("Commands") {
@@ -280,9 +270,32 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
         )
     }
     if (addingPlace && info != null) {
-        AddPlaceDialog(info, onDismiss = { addingPlace = false }) { name, radius ->
+        PlaceDialog(
+            title = "Add a place",
+            subtitle = "Around where ${info.device.name} is now${info.address?.let { " ($it)" } ?: ""}.",
+            initialName = "Home",
+            initialRadius = 150.0,
+            initialIcon = "home",
+            confirm = "Add",
+            onDismiss = { addingPlace = false },
+        ) { name, radius, icon ->
             addingPlace = false
-            vm.addPlace(info, name, radius)
+            vm.addPlace(info, name, radius, icon)
+        }
+    }
+    val placeToEdit = editingPlace
+    if (placeToEdit != null && info != null) {
+        PlaceDialog(
+            title = "Edit ${placeToEdit.name}",
+            subtitle = null,
+            initialName = placeToEdit.name,
+            initialRadius = placeToEdit.circle?.radius ?: 150.0,
+            initialIcon = placeToEdit.icon,
+            confirm = "Save",
+            onDismiss = { editingPlace = null },
+        ) { name, radius, icon ->
+            editingPlace = null
+            vm.editPlace(info, placeToEdit, name, radius, icon)
         }
     }
     if (trackerTypeDialog && info != null) {
@@ -334,25 +347,41 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
 @Composable
 private fun MarkerPreview(info: CarInfo) {
     val c = LocalAppColors.current
-    val context = LocalContext.current
-    val bitmap = remember(info.icon, info.prefs.color, info.prefs.shape) {
-        MarkerFactory.bitmap(context, info.icon, info.prefs.color, info.prefs.shape).asImageBitmap()
-    }
     Box(
-        Modifier.fillMaxWidth().padding(top = 12.dp).height(112.dp).clip(RoundedCornerShape(16.dp)).background(if (c.dark) Color(0xFF1F2124) else Color(0xFFF1F3F4))
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .height(124.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (c.dark) Color(0xFF1F2124) else Color(0xFFF1F3F4))
             .semantics { contentDescription = "Preview of ${info.device.name} on the map" },
         contentAlignment = Alignment.Center,
     ) {
         Box(Modifier.fillMaxWidth().height(10.dp).background(if (c.dark) Color(0xFF3C4043) else Color.White))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Image(bitmap, null, modifier = Modifier.size(72.dp))
-            Text(
-                info.device.name,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                color = c.ink,
-                modifier = Modifier.clip(RoundedCornerShape(999.dp)).background(c.surface).padding(horizontal = 10.dp, vertical = 3.dp),
-            )
+        CarPin(info.icon, info.carColor, info.glowColor, 72.dp)
+    }
+}
+
+/** How the app colour looks on a button and as text, while picking it. */
+@Composable
+private fun AppColourPreview(color: Color) {
+    val c = LocalAppColors.current
+    val accent = Palette.accent(color)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(
+            Modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(if (c.dark) accent.dark else accent.light)
+                .border(1.5.dp, if (Palette.isNearWhite(color) && !c.dark) accent.outlineLight else Color.Transparent, RoundedCornerShape(14.dp))
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+        ) {
+            Text("Button", style = MaterialTheme.typography.labelLarge, color = if (c.dark) accent.onDark else accent.onLight)
         }
+        Text(
+            "Link",
+            style = MaterialTheme.typography.labelLarge,
+            color = if (c.dark) accent.textDark else if (Palette.isLight(color)) accent.outlineLight else accent.light,
+        )
     }
 }
 
@@ -378,18 +407,29 @@ private fun TextDialog(title: String, initial: String, confirm: String, onDismis
     )
 }
 
+/** Name, size and icon of a place, for adding a new one or changing a saved one. */
 @Composable
-private fun AddPlaceDialog(info: CarInfo, onDismiss: () -> Unit, onAdd: (String, Double) -> Unit) {
+private fun PlaceDialog(
+    title: String,
+    subtitle: String?,
+    initialName: String,
+    initialRadius: Double,
+    initialIcon: String,
+    confirm: String,
+    onDismiss: () -> Unit,
+    onSave: (String, Double, String) -> Unit,
+) {
     val c = LocalAppColors.current
-    var name by remember { mutableStateOf("Home") }
-    var radius by remember { mutableStateOf(150.0) }
+    var name by remember { mutableStateOf(initialName) }
+    var radius by remember { mutableStateOf(initialRadius.coerceIn(50.0, 2000.0)) }
+    var icon by remember { mutableStateOf(initialIcon) }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = c.surface,
-        title = { Text("Add a place", color = c.ink) },
+        title = { Text(title, color = c.ink) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Around where ${info.device.name} is now${info.address?.let { " ($it)" } ?: ""}.", color = c.ink2)
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (subtitle != null) Text(subtitle, color = c.ink2)
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -398,24 +438,34 @@ private fun AddPlaceDialog(info: CarInfo, onDismiss: () -> Unit, onAdd: (String,
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = c.accentOutline, unfocusedBorderColor = c.line, cursorColor = c.accentOutline),
                     shape = RoundedCornerShape(14.dp),
                 )
-                Text("Size", style = MaterialTheme.typography.labelMedium, color = c.muted)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(75.0, 150.0, 300.0, 600.0).forEach { r ->
-                        val selected = radius == r
-                        Surface(
-                            onClick = { radius = r },
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (selected) c.accent else c.surface2,
-                            contentColor = if (selected) c.onAccent else c.ink,
-                            modifier = Modifier.weight(1f).height(44.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) { Text("${r.toInt()} m", style = MaterialTheme.typography.labelMedium) }
+                Text("Size: ${radius.toInt()} m around it", style = MaterialTheme.typography.labelMedium, color = c.muted)
+                Slider(
+                    value = radius.toFloat(),
+                    onValueChange = { radius = ((it / 25f).roundToInt() * 25).toDouble() },
+                    valueRange = 50f..2000f,
+                    colors = SliderDefaults.colors(thumbColor = c.accentOutline, activeTrackColor = c.accentOutline, inactiveTrackColor = c.line),
+                    modifier = Modifier.semantics { contentDescription = "Size ${radius.toInt()} metres" },
+                )
+                Text("Icon", style = MaterialTheme.typography.labelMedium, color = c.muted)
+                Ic.places.entries.chunked(4).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        row.forEach { (key, vector) ->
+                            val selected = icon == key
+                            Surface(
+                                onClick = { icon = key },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (selected) c.accent else c.surface2,
+                                contentColor = if (selected) c.onAccent else c.ink2,
+                                modifier = Modifier.weight(1f).height(48.dp).semantics { contentDescription = key + if (selected) ", chosen" else "" },
+                            ) {
+                                Box(contentAlignment = Alignment.Center) { Icon(vector, null, modifier = Modifier.size(22.dp)) }
+                            }
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onAdd(name, radius) }, enabled = name.isNotBlank()) { Text("Add", color = c.accentText, fontWeight = FontWeight.Bold) } },
+        confirmButton = { TextButton(onClick = { onSave(name, radius, icon) }, enabled = name.isNotBlank()) { Text(confirm, color = c.accentText, fontWeight = FontWeight.Bold) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = c.ink2) } },
     )
 }

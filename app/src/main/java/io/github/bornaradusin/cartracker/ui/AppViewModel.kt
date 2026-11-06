@@ -22,7 +22,10 @@ import io.github.bornaradusin.cartracker.data.TrackerKind
 import io.github.bornaradusin.cartracker.data.Trip
 import io.github.bornaradusin.cartracker.data.UpdateRate
 import io.github.bornaradusin.cartracker.data.str
+import io.github.bornaradusin.cartracker.ui.map.CarImages
 import io.github.bornaradusin.cartracker.ui.theme.Ic
+import io.github.bornaradusin.cartracker.ui.theme.Palette
+import androidx.compose.ui.graphics.Color
 import io.github.bornaradusin.cartracker.util.Format
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -67,7 +70,11 @@ data class CarInfo(
     val position: Position?,
     val prefs: DevicePrefs,
     val kind: TrackerKind,
+    /** One of [CarImages.all]. */
     val icon: String,
+    /** The car's paint and the glow of its map pin. */
+    val carColor: Color,
+    val glowColor: Color,
     val address: String?,
     val status: CarStatus,
     val updated: Instant?,
@@ -341,7 +348,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             position = p,
             prefs = prefs,
             kind = kind,
-            icon = prefs.icon.ifBlank { Ic.iconForCategory(d.category) },
+            icon = CarImages.resolve(prefs.icon, d.category),
+            carColor = Palette.parse(prefs.carColor, Palette.CarDefault),
+            glowColor = Palette.parse(prefs.color, Palette.CircleDefault),
             address = address,
             status = status,
             updated = Format.parse(p?.fixTime) ?: Format.parse(d.lastUpdate),
@@ -579,12 +588,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setLook(car: CarInfo, icon: String? = null, color: String? = null, shape: String? = null) = viewModelScope.launch {
+    fun setLook(car: CarInfo, icon: String? = null, carColor: Color? = null, glowColor: Color? = null) = viewModelScope.launch {
         c.settings.updateDevice(car.device.id) { p ->
-            p.copy(icon = icon ?: p.icon.ifBlank { car.icon }, color = color ?: p.color, shape = shape ?: p.shape)
+            p.copy(
+                icon = icon ?: car.icon,
+                carColor = carColor?.let { Palette.hex(it) } ?: p.carColor,
+                color = glowColor?.let { Palette.hex(it) } ?: p.color,
+            )
         }
         if (icon != null) {
-            val category = Ic.categoryOf[icon]
+            val category = CarImages.categoryOf[icon]
             if (category != null) updateDevice(car.device.id) { it + ("category" to JsonPrimitive(category)) }
         }
     }
@@ -617,20 +630,36 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         runCatching { api.geofences(deviceId) }.getOrNull()?.let { list -> _geofences.update { it + (deviceId to list) } }
     }
 
-    fun addPlace(car: CarInfo, name: String, radius: Double) = viewModelScope.launch {
+    fun addPlace(car: CarInfo, name: String, radius: Double, icon: String) = viewModelScope.launch {
         val p = car.position
         if (p == null || !p.hasFix) {
             say("${car.device.name} has no position yet.")
             return@launch
         }
         try {
-            val fence = api.addGeofence(name.trim().ifBlank { "Home" }, p.latitude, p.longitude, radius)
+            val fence = api.addGeofence(name.trim().ifBlank { "Home" }, p.latitude, p.longitude, radius, icon)
             api.linkGeofence(car.device.id, fence.id)
             c.settings.setAlertKind(AlertKind.PLACES, true)
             say("${fence.name} added. You'll be told when ${car.device.name} arrives or leaves.")
             loadGeofences(car.device.id)
         } catch (e: ApiException) {
             say(if (e.code == 400 || e.code == 403) "Your account can't add places on this server." else e.message ?: "Couldn't add the place.")
+        } catch (e: Exception) {
+            say("Couldn't reach the server.")
+        }
+    }
+
+    fun editPlace(car: CarInfo, fence: Geofence, name: String, radius: Double, icon: String) = viewModelScope.launch {
+        val circle = fence.circle
+        if (circle == null) {
+            say("${fence.name} isn't a circle, so it can only be changed in Traccar.")
+            return@launch
+        }
+        try {
+            api.updateGeofence(fence.id, name.trim().ifBlank { fence.name }, circle.latitude, circle.longitude, radius, icon)
+            loadGeofences(car.device.id)
+        } catch (e: ApiException) {
+            say(if (e.code == 400 || e.code == 403) "Your account can't change places on this server." else e.message ?: "Couldn't save ${fence.name}.")
         } catch (e: Exception) {
             say("Couldn't reach the server.")
         }
@@ -660,7 +689,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val events = api.events(devs.map { it.id }, nowInstant.minus(7, ChronoUnit.DAYS), nowInstant)
             val names = devs.associate { it.id to it.name }
             val places = _geofences.value.values.flatten().associate { it.id to it.name }
+            val cleared = settings.value.clearedEventId
             val items = events
+                .filter { e -> e.id > cleared }
                 .filter { e -> AlertKind.of(e) != null || e.type == "deviceOnline" }
                 .sortedByDescending { it.id }
                 .take(300)
@@ -678,6 +709,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         } catch (e: Exception) {
             _alerts.update { it.copy(loading = false, error = if (showLoading) "Couldn't load alerts." else it.error) }
         }
+    }
+
+    /** Empties the alert list and the badge. Traccar keeps the events; the app just stops showing them. */
+    fun clearAlerts() = viewModelScope.launch {
+        val newest = _alerts.value.items.maxOfOrNull { it.event.id } ?: return@launch
+        c.settings.clearAlerts(maxOf(newest, settings.value.clearedEventId))
+        _alerts.update { it.copy(items = emptyList()) }
     }
 
     /** Where an alert happened, looked up once and remembered. */

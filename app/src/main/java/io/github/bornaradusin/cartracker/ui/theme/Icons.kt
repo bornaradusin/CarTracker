@@ -70,6 +70,23 @@ object Ic {
     val play = solid("play", "M7 4l13 8-13 8z")
     val pause = line("pause", "M8 5v14M16 5v14")
 
+    val briefcase = line("briefcase", "M3 7h18v13H3z", "M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", "M3 12h18")
+    val school = line("school", "M2 9l10-5 10 5-10 5z", "M6 11v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5", "M22 9v6")
+    val cart = line("cart", "M3 4h2l2.5 11h11L21 7H6.2", circle(9f, 20f, 1.5f), circle(18f, 20f, 1.5f))
+    val parking = line("parking", "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M10 17V7h3a3 3 0 0 1 0 6h-3")
+    val heart = line("heart", "M12 20s-7-4.5-9-9a4.5 4.5 0 0 1 9-3a4.5 4.5 0 0 1 9 3c-2 4.5-9 9-9 9z")
+    val star = line("star", "M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z")
+
+    /** Icons for saved places, by the key saved in the place's "icon" attribute. */
+    val places: Map<String, ImageVector> by lazy {
+        linkedMapOf(
+            "home" to home, "work" to briefcase, "pin" to pin, "school" to school,
+            "shop" to cart, "parking" to parking, "heart" to heart, "star" to star,
+        )
+    }
+
+    fun place(key: String): ImageVector = places[key] ?: pin
+
     /** Vehicle icons for the map: name → path data (24 × 24). */
     val vehiclePaths = linkedMapOf(
         "Car" to "M5 16V12l2-5h10l2 5v4zM5 16v2M19 16v2",

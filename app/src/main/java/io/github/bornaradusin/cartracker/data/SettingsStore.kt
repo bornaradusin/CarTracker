@@ -22,8 +22,12 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 @Serializable
 data class DevicePrefs(
     val icon: String = "",
-    val color: String = "Blue",
+    /** Glow colour of the car's map pin, "#RRGGBB" (older versions saved a colour name). */
+    val color: String = "",
+    /** No longer used: pins have one shape. Kept so older settings still load. */
     val shape: String = "Circle",
+    /** Paint colour of the car on its map pin, "#RRGGBB". */
+    val carColor: String = "",
     /** The tracker arms itself a minute after the ignition goes off. */
     val autoArm: Boolean = true,
     /** Last arm/disarm sent from the app, and when. */
@@ -51,6 +55,8 @@ data class AppSettings(
     val lastEventId: Long = 0,
     val lastEventCheck: Long = 0,
     val lastSeenEventId: Long = 0,
+    /** Alerts up to this event were cleared from the list (Traccar itself keeps them). */
+    val clearedEventId: Long = 0,
 ) {
     val signedIn: Boolean get() = token != null && server.isNotBlank()
     fun prefs(deviceId: Long): DevicePrefs = devicePrefs[deviceId] ?: DevicePrefs()
@@ -74,6 +80,7 @@ class SettingsStore(private val context: Context) {
         val lastEventId = longPreferencesKey("last_event_id")
         val lastEventCheck = longPreferencesKey("last_event_check")
         val lastSeenEventId = longPreferencesKey("last_seen_event_id")
+        val clearedEventId = longPreferencesKey("cleared_event_id")
     }
 
     private val prefsSerializer = MapSerializer(Long.serializer(), DevicePrefs.serializer())
@@ -96,6 +103,7 @@ class SettingsStore(private val context: Context) {
             lastEventId = p[K.lastEventId] ?: 0,
             lastEventCheck = p[K.lastEventCheck] ?: 0,
             lastSeenEventId = p[K.lastSeenEventId] ?: 0,
+            clearedEventId = p[K.clearedEventId] ?: 0,
         )
     }
 
@@ -109,6 +117,7 @@ class SettingsStore(private val context: Context) {
         it.remove(K.lastEventId)
         it.remove(K.lastEventCheck)
         it.remove(K.lastSeenEventId)
+        it.remove(K.clearedEventId)
         it.remove(K.selected)
     }
 
@@ -126,6 +135,12 @@ class SettingsStore(private val context: Context) {
     suspend fun setAdvancedCommands(value: Boolean) = context.dataStore.edit { it[K.advanced] = value }
     suspend fun setSelectedDevice(id: Long) = context.dataStore.edit { it[K.selected] = id }
     suspend fun setLastSeenEvent(id: Long) = context.dataStore.edit { it[K.lastSeenEventId] = id }
+
+    /** Hides every alert up to [id] and marks them seen. */
+    suspend fun clearAlerts(id: Long) = context.dataStore.edit {
+        it[K.clearedEventId] = id
+        it[K.lastSeenEventId] = maxOf(id, it[K.lastSeenEventId] ?: 0)
+    }
 
     suspend fun setAlertKind(kind: AlertKind, on: Boolean) = context.dataStore.edit { p ->
         val now = p[K.alertKinds] ?: AlertKind.defaults

@@ -79,10 +79,20 @@ fun AlertsScreen(vm: AppViewModel) {
     ) {
         item {
             ScreenHeader("Alerts") {
-                Surface(onClick = { vm.loadAlerts() }, shape = RoundedCornerShape(999.dp), color = c.surface, contentColor = c.accentText) {
-                    Row(Modifier.heightIn(min = 40.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Ic.refresh, null, modifier = Modifier.size(16.dp))
-                        Text("Refresh", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.items.isNotEmpty()) {
+                        Surface(onClick = { vm.clearAlerts() }, shape = RoundedCornerShape(999.dp), color = c.surface, contentColor = c.ink2) {
+                            Row(Modifier.heightIn(min = 40.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Ic.trash, null, modifier = Modifier.size(16.dp))
+                                Text("Clear", style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                    }
+                    Surface(onClick = { vm.loadAlerts() }, shape = RoundedCornerShape(999.dp), color = c.surface, contentColor = c.accentText) {
+                        Row(Modifier.heightIn(min = 40.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Ic.refresh, null, modifier = Modifier.size(16.dp))
+                            Text("Refresh", style = MaterialTheme.typography.labelLarge)
+                        }
                     }
                 }
             }

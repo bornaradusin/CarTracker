@@ -1,5 +1,6 @@
 package io.github.bornaradusin.cartracker.ui.trips
 
+import io.github.bornaradusin.cartracker.ui.theme.Palette
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -98,7 +99,7 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
             style = MapStyle.named(settings.mapStyle),
             dark = c.dark,
             markers = current?.let {
-                listOf(MapMarker(deviceId, it.latitude, it.longitude, it.course, car?.icon ?: "Car", car?.prefs?.color ?: "Blue", car?.prefs?.shape ?: "Circle"))
+                listOf(MapMarker(deviceId, it.latitude, it.longitude, it.course, car?.icon ?: "hatchback", car?.carColor ?: Palette.CarDefault, car?.glowColor ?: Palette.CircleDefault))
             }.orEmpty(),
             route = route,
             routeDone = index,

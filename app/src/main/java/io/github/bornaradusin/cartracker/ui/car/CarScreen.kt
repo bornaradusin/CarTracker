@@ -1,5 +1,6 @@
 package io.github.bornaradusin.cartracker.ui.car
 
+import io.github.bornaradusin.cartracker.ui.map.CarPin
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -111,7 +112,7 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
             dark = c.dark,
             markers = cars.mapNotNull { info ->
                 val p = info.position?.takeIf { it.hasFix } ?: return@mapNotNull null
-                MapMarker(info.device.id, p.latitude, p.longitude, p.course, info.icon, info.prefs.color, info.prefs.shape)
+                MapMarker(info.device.id, p.latitude, p.longitude, p.course, info.icon, info.carColor, info.glowColor)
             },
             circles = selectedId?.let { id ->
                 fences[id].orEmpty().mapNotNull { f -> f.circle?.let { MapCircle(f.id, f.name, it.latitude, it.longitude, it.radius) } }
@@ -142,7 +143,8 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Icon(Ic.vehicle(car?.icon ?: "Car"), null, modifier = Modifier.size(20.dp))
+                        val shown = car
+                        if (shown != null) CarPin(shown.icon, shown.carColor, shown.glowColor, 22.dp) else Icon(Ic.car, null, modifier = Modifier.size(20.dp))
                         Text(car?.device?.name ?: "No cars yet", style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp))
                         if (cars.size > 1) Icon(Ic.chevronDown, null, modifier = Modifier.size(18.dp))
                     }
@@ -151,7 +153,7 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
                     cars.forEach { info ->
                         DropdownMenuItem(
                             text = { Text(info.device.name, color = c.ink) },
-                            leadingIcon = { Icon(Ic.vehicle(info.icon), null, tint = c.ink) },
+                            leadingIcon = { CarPin(info.icon, info.carColor, info.glowColor, 20.dp) },
                             trailingIcon = { if (info.device.id == selectedId) Icon(Ic.check, null, tint = c.accentText) },
                             onClick = {
                                 carMenu = false
