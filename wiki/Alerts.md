@@ -26,7 +26,7 @@ With live alerts off, the app checks for new alerts every 15 minutes instead.
 
 ### Which alerts to get
 
-**More → Notifications → Which alerts to get** turns each kind on or off, and sets how each one sounds:
+**More → Notifications → Which alerts to get** turns each kind on or off:
 
 | Alert | When |
 |---|---|
@@ -41,14 +41,3 @@ With live alerts off, the app checks for new alerts every 15 minutes instead.
 | Tracker replies | The tracker confirming a command, like fuel cut or alarm on |
 | Tracker offline | The tracker stops reporting (off at first) |
 | Started and stopped moving | Every trip's start and end (off at first) |
-
-### Sounds
-
-Under each alert that's on, **Sound** sets how it sounds on your phone:
-
-- **Notification sound**: your phone's usual notification sound
-- **Alarm sound**: your phone's alarm sound, with a long vibration. It plays at the alarm volume, so you hear it even with the ringer turned down. Good for **Vibration or movement**, **Tracker unplugged** and **SOS and tampering**
-- **Silent**: shows in the notification shade without a sound
-- **Choose any sound on your phone…**: opens Android's settings for that alert, where you can pick any sound and change how it vibrates
-
-Each alert type is its own notification category in Android's settings for CarTracker, so you can fine-tune them there too.
