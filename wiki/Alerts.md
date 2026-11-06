@@ -1,6 +1,9 @@
 # Alerts
 
-<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/alerts.png" width="270" align="right" alt="Alerts">
+<p>
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/alerts.png" width="260" alt="Alerts">
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/alerts-dark.png" width="260" alt="Alerts, dark">
+</p>
 
 The **Alerts** tab lists the last 7 days of alerts, newest first, grouped by day, with where each happened.
 
@@ -10,7 +13,6 @@ The **Alerts** tab lists the last 7 days of alerts, newest first, grouped by day
 
 Tapping an alert notification opens this tab.
 
-<br clear="right">
 
 ## Alerts on your phone
 

@@ -5,6 +5,11 @@
 <img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/trips.png" width="240" alt="Trips">
 <img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/controls.png" width="240" alt="All controls">
 </p>
+<p>
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/car-dark.png" width="240" alt="The map, dark">
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/alerts-dark.png" width="240" alt="Alerts, dark">
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/more-dark.png" width="240" alt="More, dark">
+</p>
 
 ## Getting started
 

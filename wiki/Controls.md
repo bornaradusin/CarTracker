@@ -1,8 +1,12 @@
 # Controls
 
-<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/controls.png" width="270" align="right" alt="All controls">
-
 Tap **All controls** on the car card.
+
+<p>
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/controls.png" width="260" alt="All controls">
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/controls-dark.png" width="260" alt="All controls, dark">
+</p>
+
 
 ## Fuel cut (immobiliser)
 

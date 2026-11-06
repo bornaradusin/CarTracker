@@ -185,10 +185,25 @@ def main():
     tap("Cancel")
     swipe(540, 1700, 540, 700)
     shot("more-settings")
+    # The same screens in dark mode
     x, y = scroll_to("Dark")
     tap_at(x, y)
     tap("Car")
     shot("car-dark", settle=8)
+    tap("All controls")
+    shot("controls-dark")
+    shell("input", "keyevent", "4")
+    time.sleep(2)
+    tap("Trips")
+    shot("trips-dark", settle=3)
+    tap(" · top ", exact=False)
+    shot("replay-dark", settle=8)
+    shell("input", "keyevent", "4")
+    time.sleep(2)
+    tap("Alerts")
+    shot("alerts-dark", settle=3)
+    tap("More")
+    shot("more-dark", settle=2)
 
 
 def explain_failure():

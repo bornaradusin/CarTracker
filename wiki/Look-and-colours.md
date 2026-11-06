@@ -33,11 +33,12 @@ Tap **Save** to keep it, or **Cancel** to leave it as it was.
 
 ## The app
 
-<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/more-settings.png" width="270" align="right" alt="Theme and app colour">
-
 Under **More → Theme**:
 
 - **Light**, **Dark** or **Follow phone**
 - **App colour**: buttons, switches, highlights and routes. Light colours get a darker outline so they stay readable.
 
-<br clear="right">
+<p>
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/more-settings.png" width="260" alt="Theme and app colour">
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/more-dark.png" width="260" alt="Theme and app colour, dark">
+</p>

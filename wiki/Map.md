@@ -1,6 +1,9 @@
 # Map
 
-<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/car.png" width="270" align="right" alt="The map">
+<p>
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/car.png" width="260" alt="The map">
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/car-dark.png" width="260" alt="The map, dark">
+</p>
 
 The **Car** tab shows your car on the map, with its card at the bottom.
 
@@ -37,6 +40,5 @@ The **Car** tab shows your car on the map, with its card at the bottom.
 <br clear="right">
 
 <img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/map-styles.png" width="270" alt="Map styles">
-<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/car-dark.png" width="270" alt="Dark theme">
 
 The maps come from [OpenFreeMap](https://openfreemap.org) and [OpenTopoMap](https://opentopomap.org): free, with no Google key.
