@@ -1,5 +1,6 @@
 package io.github.bornaradusin.cartracker.ui.more
 
+import io.github.bornaradusin.cartracker.data.AlertSound
 import kotlin.math.roundToInt
 import io.github.bornaradusin.cartracker.ui.theme.Palette
 import io.github.bornaradusin.cartracker.ui.map.CarPin
@@ -470,10 +471,10 @@ private fun PlaceDialog(
     )
 }
 
-private fun openChannelSettings(context: Context) {
+private fun openChannelSettings(context: Context, channel: String = Notifier.CHANNEL_LIVE) {
     val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
         .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-        .putExtra(Settings.EXTRA_CHANNEL_ID, Notifier.CHANNEL_LIVE)
+        .putExtra(Settings.EXTRA_CHANNEL_ID, channel)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     runCatching { context.startActivity(intent) }
 }
@@ -493,7 +494,9 @@ private fun askBatteryExemption(context: Context) {
 @Composable
 fun AlertTypesScreen(vm: AppViewModel, onBack: () -> Unit) {
     val c = LocalAppColors.current
+    val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
+    var choosingSound by remember { mutableStateOf<AlertKind?>(null) }
     Column(
         Modifier
             .fillMaxSize()
@@ -506,20 +509,78 @@ fun AlertTypesScreen(vm: AppViewModel, onBack: () -> Unit) {
         ScreenHeader("Which alerts to get", onBack = onBack)
         SectionCard {
             AlertKind.entries.forEachIndexed { i, kind ->
+                val on = kind.key in settings.alertKinds
+                val last = i == AlertKind.entries.lastIndex
                 ToggleRow(
                     kind.title,
                     kind.hint,
-                    checked = kind.key in settings.alertKinds,
+                    checked = on,
                     onChange = { vm.setAlertFilter(kind, it) },
-                    divider = i < AlertKind.entries.lastIndex,
+                    divider = !on && !last,
                 )
+                if (on) {
+                    val sound = AlertSound.of(settings.alertSounds[kind.key])
+                    SettingRow(
+                        "Sound",
+                        null,
+                        divider = !last,
+                        onClick = { choosingSound = kind },
+                        leading = { Icon(Ic.bell, null, tint = c.muted, modifier = Modifier.size(18.dp)) },
+                    ) {
+                        Text(sound.title, style = MaterialTheme.typography.bodyMedium, color = c.ink2)
+                        Icon(Ic.chevronRight, null, tint = c.muted, modifier = Modifier.size(18.dp))
+                    }
+                }
             }
         }
         Text(
-            "Speeding needs a limit, set under All controls. Places need a place, added under More.",
+            "Speeding needs a limit, set under All controls. Places need a place, added under More. " +
+                "Alarm sound plays at your phone's alarm volume, so you hear it even with the ringer down.",
             style = MaterialTheme.typography.bodySmall,
             color = c.muted,
             modifier = Modifier.padding(horizontal = 4.dp),
+        )
+    }
+
+    val kind = choosingSound
+    if (kind != null) {
+        val current = AlertSound.of(settings.alertSounds[kind.key])
+        AlertDialog(
+            onDismissRequest = { choosingSound = null },
+            containerColor = c.surface,
+            title = { Text("${kind.title}: sound", color = c.ink) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AlertSound.entries.forEach { sound ->
+                        Surface(
+                            onClick = {
+                                choosingSound = null
+                                vm.setAlertSound(kind, sound)
+                            },
+                            color = if (sound == current) c.accentTint else c.surface,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(sound.title, color = c.ink, modifier = Modifier.weight(1f))
+                                if (sound == current) Icon(Ic.check, null, tint = c.accentText, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                    Surface(
+                        onClick = {
+                            choosingSound = null
+                            openChannelSettings(context, Notifier.channelFor(context, kind, current))
+                        },
+                        color = c.surface,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Choose any sound on your phone…", color = c.accentText, modifier = Modifier.padding(14.dp))
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { choosingSound = null }) { Text("Close", color = c.ink2) } },
         )
     }
 }

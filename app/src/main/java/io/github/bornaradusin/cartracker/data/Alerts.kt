@@ -87,3 +87,14 @@ object EventText {
         else -> "Alarm: " + alarm.replace(Regex("([a-z])([A-Z])"), "$1 $2").lowercase()
     }
 }
+
+/** How an alert type sounds on the phone. */
+enum class AlertSound(val key: String, val title: String) {
+    NORMAL("normal", "Notification sound"),
+    ALARM("alarm", "Alarm sound"),
+    SILENT("silent", "Silent");
+
+    companion object {
+        fun of(key: String?): AlertSound = entries.firstOrNull { it.key == key } ?: NORMAL
+    }
+}

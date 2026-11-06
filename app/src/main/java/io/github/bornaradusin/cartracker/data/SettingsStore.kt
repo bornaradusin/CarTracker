@@ -50,6 +50,8 @@ data class AppSettings(
     val liveAlerts: Boolean = true,
     val advancedCommands: Boolean = false,
     val alertKinds: Set<String> = AlertKind.defaults,
+    /** Alert type key → [AlertSound] key; types not listed use the normal notification sound. */
+    val alertSounds: Map<String, String> = emptyMap(),
     val devicePrefs: Map<Long, DevicePrefs> = emptyMap(),
     val selectedDeviceId: Long = 0,
     val lastEventId: Long = 0,
@@ -75,6 +77,7 @@ class SettingsStore(private val context: Context) {
         val liveAlerts = booleanPreferencesKey("live_alerts")
         val advanced = booleanPreferencesKey("advanced_commands")
         val alertKinds = stringSetPreferencesKey("alert_kinds")
+        val alertSounds = stringSetPreferencesKey("alert_sounds")
         val devicePrefs = stringPreferencesKey("device_prefs")
         val selected = longPreferencesKey("selected_device")
         val lastEventId = longPreferencesKey("last_event_id")
@@ -97,6 +100,9 @@ class SettingsStore(private val context: Context) {
             liveAlerts = p[K.liveAlerts] ?: true,
             advancedCommands = p[K.advanced] ?: false,
             alertKinds = p[K.alertKinds] ?: AlertKind.defaults,
+            alertSounds = p[K.alertSounds].orEmpty().mapNotNull { entry ->
+                entry.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] }
+            }.toMap(),
             devicePrefs = p[K.devicePrefs]?.let { runCatching { AppJson.decodeFromString(prefsSerializer, it) }.getOrNull() }
                 ?: emptyMap(),
             selectedDeviceId = p[K.selected] ?: 0,
@@ -140,6 +146,11 @@ class SettingsStore(private val context: Context) {
     suspend fun clearAlerts(id: Long) = context.dataStore.edit {
         it[K.clearedEventId] = id
         it[K.lastSeenEventId] = maxOf(id, it[K.lastSeenEventId] ?: 0)
+    }
+
+    suspend fun setAlertSound(kind: AlertKind, sound: AlertSound) = context.dataStore.edit { p ->
+        val others = p[K.alertSounds].orEmpty().filterNot { it.startsWith("${kind.key}=") }
+        p[K.alertSounds] = if (sound == AlertSound.NORMAL) others.toSet() else (others + "${kind.key}=${sound.key}").toSet()
     }
 
     suspend fun setAlertKind(kind: AlertKind, on: Boolean) = context.dataStore.edit { p ->

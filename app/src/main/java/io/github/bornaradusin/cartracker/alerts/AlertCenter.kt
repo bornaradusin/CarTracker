@@ -3,6 +3,7 @@ package io.github.bornaradusin.cartracker.alerts
 import android.content.Context
 import io.github.bornaradusin.cartracker.data.AddressLookup
 import io.github.bornaradusin.cartracker.data.AlertKind
+import io.github.bornaradusin.cartracker.data.AlertSound
 import io.github.bornaradusin.cartracker.data.EventText
 import io.github.bornaradusin.cartracker.data.LiveRepository
 import io.github.bornaradusin.cartracker.data.SettingsStore
@@ -66,7 +67,9 @@ class AlertCenter(
             val time = Format.time(Format.parse(event.eventTime))
             val title = (names[event.deviceId]?.let { "$it: " } ?: "") + EventText.title(event, placeNames[event.geofenceId])
             val text = listOfNotNull(where, time).joinToString(" · ")
-            Notifier.alert(context, event.id, title, text, EventText.isWarning(event))
+            val kind = AlertKind.of(event)
+            val channel = Notifier.channelFor(context, kind, AlertSound.of(kind?.let { s.alertSounds[it.key] }))
+            Notifier.alert(context, event.id, title, text, EventText.isWarning(event), channel)
         }
     }
 }

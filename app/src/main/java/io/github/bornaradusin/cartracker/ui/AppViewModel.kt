@@ -1,5 +1,7 @@
 package io.github.bornaradusin.cartracker.ui
 
+import io.github.bornaradusin.cartracker.alerts.Notifier
+import io.github.bornaradusin.cartracker.data.AlertSound
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -769,6 +771,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setAdvanced(value: Boolean) = viewModelScope.launch { c.settings.setAdvancedCommands(value) }
     fun setLiveAlerts(value: Boolean) = viewModelScope.launch { c.settings.setLiveAlerts(value) }
     fun setAlertFilter(kind: AlertKind, on: Boolean) = viewModelScope.launch { c.settings.setAlertKind(kind, on) }
+
+    fun setAlertSound(kind: AlertKind, sound: AlertSound) = viewModelScope.launch {
+        c.settings.setAlertSound(kind, sound)
+        Notifier.channelFor(getApplication<Application>(), kind, sound)
+    }
 
     fun say(message: String) {
         _messages.tryEmit(message)
