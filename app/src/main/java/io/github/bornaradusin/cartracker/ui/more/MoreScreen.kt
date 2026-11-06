@@ -8,6 +8,10 @@ import io.github.bornaradusin.cartracker.ui.components.ColorRow
 import io.github.bornaradusin.cartracker.data.Geofence
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Slider
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import io.github.bornaradusin.cartracker.util.Format
+import kotlin.math.roundToLong
 import androidx.compose.foundation.border
 import android.annotation.SuppressLint
 import android.content.Context
@@ -81,6 +85,7 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
     var editingPlace by remember { mutableStateOf<Geofence?>(null) }
     var signingOut by remember { mutableStateOf(false) }
     var trackerTypeDialog by remember { mutableStateOf(false) }
+    var odometerDialog by remember { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -132,6 +137,11 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
                     Palette.CircleDefault,
                     preview = { CarPin(info.icon, info.carColor, it, 72.dp) },
                 ) { vm.setLook(info, glowColor = it) }
+                ChevronRow(
+                    "Odometer",
+                    "Match it to the car's dashboard",
+                    value = info.position?.totalDistance?.let { Format.kilometres(it) } ?: "–",
+                ) { odometerDialog = true }
                 ChevronRow(
                     "Tracker type",
                     "Which commands the app sends",
@@ -295,6 +305,20 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
             vm.editPlace(info, placeToEdit, name, radius, icon)
         }
     }
+    if (odometerDialog && info != null) {
+        TextDialog(
+            title = "Odometer",
+            initial = info.position?.totalDistance?.let { (it / 1_000).roundToLong().toString() } ?: "",
+            confirm = "Save",
+            onDismiss = { odometerDialog = false },
+            hint = "What the car's dashboard shows. Trips and totals carry on from here.",
+            number = true,
+            suffix = "km",
+        ) { value ->
+            odometerDialog = false
+            value.toDoubleOrNull()?.let { vm.setOdometer(info, it) }
+        }
+    }
     if (trackerTypeDialog && info != null) {
         AlertDialog(
             onDismissRequest = { trackerTypeDialog = false },
@@ -383,7 +407,16 @@ private fun AppColourPreview(color: Color) {
 }
 
 @Composable
-private fun TextDialog(title: String, initial: String, confirm: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+private fun TextDialog(
+    title: String,
+    initial: String,
+    confirm: String,
+    onDismiss: () -> Unit,
+    hint: String? = null,
+    number: Boolean = false,
+    suffix: String? = null,
+    onConfirm: (String) -> Unit,
+) {
     val c = LocalAppColors.current
     var text by remember { mutableStateOf(initial) }
     AlertDialog(
@@ -393,8 +426,11 @@ private fun TextDialog(title: String, initial: String, confirm: String, onDismis
         text = {
             OutlinedTextField(
                 value = text,
-                onValueChange = { text = it },
+                onValueChange = { text = if (number) it.filter { ch -> ch.isDigit() }.take(7) else it },
                 singleLine = true,
+                supportingText = if (hint != null) { { Text(hint, color = c.muted) } } else null,
+                suffix = if (suffix != null) { { Text(suffix, color = c.muted) } } else null,
+                keyboardOptions = if (number) KeyboardOptions(keyboardType = KeyboardType.Number) else KeyboardOptions.Default,
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = c.accentOutline, unfocusedBorderColor = c.line, cursorColor = c.accentOutline),
                 shape = RoundedCornerShape(14.dp),
             )

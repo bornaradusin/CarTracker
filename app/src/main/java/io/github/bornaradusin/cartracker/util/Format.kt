@@ -46,6 +46,33 @@ object Format {
         else -> "${(meters / 1_000).roundToInt()} km"
     }
 
+    private val dayMonth = DateTimeFormatter.ofPattern("d MMM", Locale.getDefault())
+    private val monthYear = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
+
+    /** A stats period's title: "2 – 8 Nov", "November 2026", "2026". [end] is the day after it. */
+    fun period(kind: String, start: LocalDate, end: LocalDate): String = when (kind) {
+        "WEEK" -> {
+            val last = end.minusDays(1)
+            if (start.month == last.month) "${start.dayOfMonth} – ${last.format(dayMonth)}" else "${start.format(dayMonth)} – ${last.format(dayMonth)}"
+        }
+        "MONTH" -> start.format(monthYear)
+        else -> start.year.toString()
+    }
+
+    /** "J", "F", "M"… for a year's chart. */
+    fun monthLetter(date: LocalDate): String =
+        date.month.getDisplayName(java.time.format.TextStyle.NARROW, Locale.getDefault())
+
+    /** "123,456 km", for odometers. */
+    fun kilometres(meters: Double): String = String.format(Locale.getDefault(), "%,d km", (meters / 1_000).roundToInt())
+
+    /** "until 22:15" today, "until Sat 7 Nov 22:15" on another day. */
+    fun until(instant: Instant): String {
+        val at = instant.atZone(zone)
+        return if (at.toLocalDate() == LocalDate.now(zone)) "until ${at.format(clock)}"
+        else "until ${at.format(DateTimeFormatter.ofPattern("EEE d MMM HH:mm", Locale.getDefault()))}"
+    }
+
     fun speedKmh(knots: Double): String = "${(knots * 1.852).roundToInt()} km/h"
 
     /** "6 h 22 m", "33 min", "45 s". */

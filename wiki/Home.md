@@ -10,6 +10,11 @@
 <img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/alerts-dark.png" width="240" alt="Alerts, dark">
 <img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/more-dark.png" width="240" alt="More, dark">
 </p>
+<p>
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/stats.png" width="240" alt="Stats">
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/heatmap.png" width="240" alt="Heatmap">
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/battery.png" width="240" alt="Battery">
+</p>
 
 ## Getting started
 
@@ -21,12 +26,14 @@
 
 | Page | What it covers |
 |---|---|
-| [Map](Map) | Where the car is, the car card, map styles, directions and sharing |
-| [Controls](Controls) | Fuel cut, alarm, tracker alerts, speed limit, update rate and every other command |
-| [Trips](Trips) | The last 7 days of driving, and replaying a trip on the map |
+| [Map](Map) | Where the car is, the car card, map styles, directions, and sharing with a live link |
+| [Controls](Controls) | Fuel cut (with fingerprint), alarm, tracker alerts, speed limit, update rate and every other command |
+| [Trips](Trips) | The last 7 days of driving, replays coloured by speed, stats by week, month and year, and a heatmap |
+| [Battery](Battery) | The car battery's voltage over a day or a week, and a low-battery warning |
 | [Alerts](Alerts) | The alert list, live alerts, and choosing which alerts you get |
 | [Places](Places) | Home, work and other places, with alerts when the car arrives or leaves |
-| [Look and colours](Look-and-colours) | The car's pin, its colours, the app's colour and dark mode |
+| [Look and colours](Look-and-colours) | The car's pin, its colours, the odometer, the app's colour and dark mode |
+| [Widget and quick settings](Home-screen) | The home-screen widget and the Car alarm tile |
 | [Your Traccar server](Traccar-server) | What the app needs from the server, and accounts for family or customers |
 | [MiCODUS MV710G](MiCODUS-MV710G) | Setting up MiCODUS trackers so every command and reply works |
 | [Troubleshooting](Troubleshooting) | When something doesn't look right |

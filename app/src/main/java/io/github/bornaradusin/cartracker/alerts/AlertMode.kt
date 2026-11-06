@@ -13,6 +13,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import io.github.bornaradusin.cartracker.container
 import io.github.bornaradusin.cartracker.data.AppSettings
+import io.github.bornaradusin.cartracker.shortcuts.CarWidget
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
@@ -51,7 +52,14 @@ class AlertWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     override suspend fun doWork(): Result {
         val c = applicationContext.container
         c.ready()
-        return runCatching { c.alerts.check() }.fold({ Result.success() }, { Result.retry() })
+        val result = runCatching { c.alerts.check() }
+        // Without live alerts this is also when the battery warning and the widget get a fresh reading
+        runCatching {
+            val devices = c.api.devices().map { it.first }
+            c.battery.check(devices, c.api.positions())
+        }
+        runCatching { CarWidget.refresh(applicationContext, fetch = true) }
+        return result.fold({ Result.success() }, { Result.retry() })
     }
 }
 

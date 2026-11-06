@@ -40,6 +40,7 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.FillLayer
+import org.maplibre.android.style.layers.HeatmapLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
@@ -95,6 +96,10 @@ fun TrackerMap(
     routeDone: Int = -1,
     routeColor: Color = Color(0xFF1D5BD8),
     showRouteEnds: Boolean = false,
+    /** Speed in km/h at each point of [route]: draws the route in speed colours (see [SpeedColors]). */
+    routeSpeeds: List<Double> = emptyList(),
+    /** Where the car has been, drawn as a heatmap. */
+    heat: List<Pair<Double, Double>> = emptyList(),
     camera: MapCamera? = null,
     /** Shows where you are, as a blue dot, once location is allowed. */
     showMyLocation: Boolean = false,
@@ -206,12 +211,20 @@ fun TrackerMap(
         s.getSourceAs<GeoJsonSource>(SOURCE_FENCE_LABELS)?.setGeoJson(FeatureCollection.fromFeatures(labels))
     }
 
-    LaunchedEffect(loaded, route, routeDone, showRouteEnds) {
+    LaunchedEffect(loaded, route, routeDone, showRouteEnds, routeSpeeds) {
         val s = loaded ?: return@LaunchedEffect
         fun line(points: List<LatLng>): FeatureCollection =
             if (points.size < 2) FeatureCollection.fromFeatures(emptyList())
             else FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(points.map { Point.fromLngLat(it.longitude, it.latitude) })))
-        if (routeDone < 0) {
+        val coloured = routeSpeeds.size == route.size && route.size >= 2
+        s.getSourceAs<GeoJsonSource>(SOURCE_ROUTE_SPEED)?.setGeoJson(
+            if (coloured) FeatureCollection.fromFeatures(SpeedColors.segments(route, routeSpeeds)) else FeatureCollection.fromFeatures(emptyList()),
+        )
+        if (coloured) {
+            // The whole trip in speed colours; the car's pin shows how far the replay has got
+            s.getSourceAs<GeoJsonSource>(SOURCE_ROUTE_DONE)?.setGeoJson(line(emptyList()))
+            s.getSourceAs<GeoJsonSource>(SOURCE_ROUTE_ALL)?.setGeoJson(line(emptyList()))
+        } else if (routeDone < 0) {
             s.getSourceAs<GeoJsonSource>(SOURCE_ROUTE_DONE)?.setGeoJson(line(route))
             s.getSourceAs<GeoJsonSource>(SOURCE_ROUTE_ALL)?.setGeoJson(line(emptyList()))
         } else {
@@ -227,6 +240,12 @@ fun TrackerMap(
             )
         } else emptyList()
         s.getSourceAs<GeoJsonSource>(SOURCE_ENDS)?.setGeoJson(FeatureCollection.fromFeatures(ends))
+    }
+
+    LaunchedEffect(loaded, heat) {
+        val s = loaded ?: return@LaunchedEffect
+        val points = heat.map { (lat, lon) -> Feature.fromGeometry(Point.fromLngLat(lon, lat)) }
+        s.getSourceAs<GeoJsonSource>(SOURCE_HEAT)?.setGeoJson(FeatureCollection.fromFeatures(points))
     }
 
     LaunchedEffect(map, camera?.stamp) {
@@ -297,14 +316,39 @@ private const val SOURCE_FENCE_LABELS = "ct-fence-labels"
 private const val SOURCE_ROUTE_ALL = "ct-route-all"
 private const val SOURCE_ROUTE_DONE = "ct-route-done"
 private const val SOURCE_ENDS = "ct-route-ends"
+private const val SOURCE_ROUTE_SPEED = "ct-route-speed"
+private const val SOURCE_HEAT = "ct-heat"
 private const val IMAGE_START = "ct-start"
 private const val IMAGE_END = "ct-end"
 
 private fun addOverlayLayers(style: Style, routeColor: Color) {
     val accent = routeColor.toArgb()
-    listOf(SOURCE_FENCES, SOURCE_FENCE_LABELS, SOURCE_ROUTE_ALL, SOURCE_ROUTE_DONE, SOURCE_ENDS, SOURCE_MARKERS).forEach { id ->
+    listOf(SOURCE_HEAT, SOURCE_FENCES, SOURCE_FENCE_LABELS, SOURCE_ROUTE_ALL, SOURCE_ROUTE_DONE, SOURCE_ROUTE_SPEED, SOURCE_ENDS, SOURCE_MARKERS).forEach { id ->
         if (style.getSource(id) == null) style.addSource(GeoJsonSource(id))
     }
+    style.addLayer(
+        HeatmapLayer("ct-heat", SOURCE_HEAT).withProperties(
+            PropertyFactory.heatmapRadius(
+                Expression.interpolate(Expression.linear(), Expression.zoom(), Expression.stop(4, 3f), Expression.stop(10, 8f), Expression.stop(15, 18f)),
+            ),
+            PropertyFactory.heatmapIntensity(
+                Expression.interpolate(Expression.linear(), Expression.zoom(), Expression.stop(4, 0.5f), Expression.stop(15, 1.6f)),
+            ),
+            PropertyFactory.heatmapColor(
+                Expression.interpolate(
+                    Expression.linear(),
+                    Expression.heatmapDensity(),
+                    Expression.stop(0, Expression.rgba(0, 0, 0, 0)),
+                    Expression.stop(0.1, Expression.rgba(29, 91, 216, 0.55)),
+                    Expression.stop(0.3, Expression.rgba(0, 188, 220, 0.75)),
+                    Expression.stop(0.5, Expression.rgba(76, 200, 80, 0.85)),
+                    Expression.stop(0.7, Expression.rgba(250, 205, 40, 0.9)),
+                    Expression.stop(1, Expression.rgba(226, 49, 43, 0.95)),
+                ),
+            ),
+            PropertyFactory.heatmapOpacity(0.9f),
+        ),
+    )
     style.addLayer(
         FillLayer("ct-fences-fill", SOURCE_FENCES).withProperties(
             PropertyFactory.fillColor(accent),
@@ -342,6 +386,14 @@ private fun addOverlayLayers(style: Style, routeColor: Color) {
     style.addLayer(
         LineLayer("ct-route-done", SOURCE_ROUTE_DONE).withProperties(
             PropertyFactory.lineColor(accent),
+            PropertyFactory.lineWidth(6f),
+            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+        ),
+    )
+    style.addLayer(
+        LineLayer("ct-route-speed", SOURCE_ROUTE_SPEED).withProperties(
+            PropertyFactory.lineColor(Expression.toColor(Expression.get("color"))),
             PropertyFactory.lineWidth(6f),
             PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
             PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),

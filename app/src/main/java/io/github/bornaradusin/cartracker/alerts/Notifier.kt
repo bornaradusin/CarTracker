@@ -64,7 +64,14 @@ object Notifier {
             .build()
     }
 
-    fun alert(context: Context, id: Long, title: String, text: String, warning: Boolean) {
+    fun alert(context: Context, id: Long, title: String, text: String, warning: Boolean) =
+        post(context, (id % Int.MAX_VALUE).toInt() + 100, title, text, warning)
+
+    /** The app's own low-battery warning: one per car, replacing the last. */
+    fun batteryLow(context: Context, deviceId: Long, title: String, text: String) =
+        post(context, -1_000 - (deviceId % 100_000).toInt(), title, text, warning = true)
+
+    private fun post(context: Context, notificationId: Int, title: String, text: String, warning: Boolean) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
             android.os.Build.VERSION.SDK_INT >= 33
         ) return
@@ -79,6 +86,6 @@ object Notifier {
             .setAutoCancel(true)
             .setContentIntent(openAppIntent(context, true))
             .build()
-        runCatching { NotificationManagerCompat.from(context).notify((id % Int.MAX_VALUE).toInt() + 100, notification) }
+        runCatching { NotificationManagerCompat.from(context).notify(notificationId, notification) }
     }
 }

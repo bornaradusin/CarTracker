@@ -47,7 +47,8 @@ import io.github.bornaradusin.cartracker.data.TrackerKind
 import io.github.bornaradusin.cartracker.data.UpdateRate
 import io.github.bornaradusin.cartracker.ui.AppViewModel
 import io.github.bornaradusin.cartracker.ui.CarInfo
-import io.github.bornaradusin.cartracker.ui.PendingChange
+import io.github.bornaradusin.cartracker.data.PendingChange
+import io.github.bornaradusin.cartracker.ui.components.rememberIdentityCheck
 import io.github.bornaradusin.cartracker.ui.components.BigButton
 import io.github.bornaradusin.cartracker.ui.components.ChevronRow
 import io.github.bornaradusin.cartracker.ui.components.QuietButton
@@ -68,6 +69,7 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
     val pendingChanges by vm.pending.collectAsStateWithLifecycle()
     var confirm by remember { mutableStateOf<Action?>(null) }
     var rateDialog by remember { mutableStateOf(false) }
+    val checkIdentity = rememberIdentityCheck(settings.fuelFingerprint)
 
     val info = car
     LaunchedEffect(info?.device?.id) { info?.device?.id?.let { vm.loadCommandOptions(it) } }
@@ -108,7 +110,9 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 BigButton("Cut fuel", Modifier.weight(1f), warning = true, icon = Ic.lock) { confirm = Action.CUT_NOW }
-                QuietButton("Restore fuel", Modifier.weight(1f), outlined = true, icon = Ic.unlock) { vm.send(info, Action.RESTORE) }
+                QuietButton("Restore fuel", Modifier.weight(1f), outlined = true, icon = Ic.unlock) {
+                    checkIdentity("Restore fuel to ${info.device.name}") { vm.send(info, Action.RESTORE) }
+                }
             }
             if (TrackerCommands.supports(info.kind, Action.CUT_SLOW, types)) {
                 QuietButton("Cut fuel when slow (safer while driving)", Modifier.fillMaxWidth().padding(top = 10.dp)) { confirm = Action.CUT_SLOW }
@@ -117,7 +121,14 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 "Cutting fuel stops the engine. Use it when the car is stopped or moving slowly.",
                 style = MaterialTheme.typography.bodySmall,
                 color = c.muted,
-                modifier = Modifier.padding(top = 10.dp, bottom = 8.dp),
+                modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
+            )
+            ToggleRow(
+                "Ask for fingerprint",
+                "Before cutting or restoring fuel. Your phone's PIN works too.",
+                checked = settings.fuelFingerprint,
+                onChange = { vm.setFuelFingerprint(it) },
+                divider = false,
             )
         }
 
@@ -230,7 +241,8 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     confirm = null
-                    vm.send(target, action)
+                    if (action == Action.RESTART) vm.send(target, action)
+                    else checkIdentity("Cut fuel to ${target.device.name}") { vm.send(target, action) }
                 }) {
                     Text(
                         when (action) {

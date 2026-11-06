@@ -16,6 +16,8 @@ The tile shows **Fuel on**, or **Fuel cut** in orange while the car can't start.
 - **Cut fuel safely**: waits until the car is below 20 km/h. Only shown when the tracker supports it.
 - **Restore fuel**: the car can start again.
 
+**Ask for fingerprint** (on at first): cutting or restoring fuel asks for your fingerprint, face or the phone's PIN first, so it can't happen by accident or by someone else picking up your phone. Turn it off in the same card. Phones with no screen lock skip it.
+
 ## Alarm
 
 - **Alarm**: armed, the tracker alerts you if the car is moved or shaken.

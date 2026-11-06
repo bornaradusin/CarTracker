@@ -15,6 +15,8 @@ Under **More → Your car**:
 
 Each car has its own look.
 
+**Odometer**, in the same section: set it to what the car's dashboard shows, and Traccar counts on from there. Changing it needs an account that may edit the car on the server.
+
 <br clear="right">
 
 ## Picking a colour

@@ -52,7 +52,11 @@ object EventText {
         "deviceInactive" -> "Tracker inactive"
         "deviceMoving" -> "Started moving"
         "deviceStopped" -> "Stopped"
-        "commandResult" -> event.attributes.str("result")?.let { "Tracker replied: ${it.take(80)}" } ?: "Tracker replied"
+        "commandResult" -> event.attributes.str("result")?.takeIf { it.isNotBlank() }?.let { raw ->
+            val friendly = TrackerCommands.friendlyReply(raw)
+            // Known answers read as what happened ("Alarm turned on"); others keep the tracker's words
+            if (friendly != TrackerCommands.readableReply(raw)) friendly else "Tracker replied: ${friendly.take(80)}"
+        } ?: "Tracker replied"
         "queuedCommandSent" -> "Waiting command sent to the tracker"
         "maintenance" -> "Service due"
         "textMessage" -> "Message from the tracker"

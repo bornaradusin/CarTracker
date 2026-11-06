@@ -2,4 +2,9 @@
 <resources>
     <color name="window_bg">#F4F6F8</color>
     <color name="launcher_bg">#01071A</color>
+    <color name="widget_bg">#FFFFFF</color>
+    <color name="widget_ink">#0E1726</color>
+    <color name="widget_muted">#5B6576</color>
+    <color name="widget_chip">#EEF1F5</color>
+    <color name="widget_warn">#B4540A</color>
 </resources>

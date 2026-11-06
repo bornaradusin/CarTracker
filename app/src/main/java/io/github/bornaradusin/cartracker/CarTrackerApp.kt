@@ -3,8 +3,12 @@ package io.github.bornaradusin.cartracker
 import android.app.Application
 import android.content.Context
 import io.github.bornaradusin.cartracker.alerts.AlertCenter
+import io.github.bornaradusin.cartracker.alerts.BatteryWatch
 import io.github.bornaradusin.cartracker.alerts.Notifier
 import io.github.bornaradusin.cartracker.data.AddressLookup
+import io.github.bornaradusin.cartracker.data.CommandCenter
+import io.github.bornaradusin.cartracker.data.HistoryStore
+import io.github.bornaradusin.cartracker.shortcuts.CarWidget
 import io.github.bornaradusin.cartracker.data.LiveRepository
 import io.github.bornaradusin.cartracker.data.SettingsStore
 import io.github.bornaradusin.cartracker.data.TraccarApi
@@ -12,6 +16,9 @@ import io.github.bornaradusin.cartracker.data.USER_AGENT
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -49,7 +56,11 @@ class AppContainer(val app: Application) {
     val live = LiveRepository(api, scope)
     val addresses = AddressLookup(app)
     val alerts = AlertCenter(app, api, settings, live, addresses)
+    val commands = CommandCenter(api, settings, scope)
+    val battery = BatteryWatch(app, settings)
+    val history = HistoryStore(api, java.io.File(app.cacheDir, "history"))
 
+    @OptIn(FlowPreview::class)
     fun start() {
         scope.launch {
             settings.flow.map { it.server to it.token }.distinctUntilChanged().collect { (server, token) ->
@@ -57,6 +68,17 @@ class AppContainer(val app: Application) {
                 api.baseUrl = server
                 api.token = token
                 if (changed) live.reset()
+            }
+        }
+        // The low-battery warning and the home-screen widget follow every new position
+        scope.launch {
+            live.positions.debounce(1_000).collect { positions ->
+                if (positions.isNotEmpty()) runCatching { battery.check(live.devices.value, positions.values) }
+            }
+        }
+        scope.launch {
+            combine(live.positions, live.devices, settings.flow) { _, _, _ -> }.debounce(2_000).collect {
+                if (CarWidget.hasWidgets(app)) runCatching { CarWidget.refresh(app, fetch = false) }
             }
         }
     }

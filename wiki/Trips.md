@@ -15,6 +15,32 @@ The **Trips** tab shows the car's driving, one day at a time.
 Trips are worked out by your Traccar server from the car's positions. A stop shorter than a few minutes counts as part of the same trip.
 
 
+## Stats
+
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/stats.png" width="270" align="right" alt="Stats">
+
+Tap **Stats** under the day's summary.
+
+- **Week, Month or Year**, with the arrows to go back to earlier ones.
+- The totals: **distance**, **driving time**, number of **trips** and **top speed**.
+- A bar for each day (a week or month) or each month (a year). Switch the bars between **Distance** and **Driving time**, and tap a bar for its numbers.
+- The **average per day** so far, and the **longest trip**.
+
+Finished months are kept on your phone, so a year opens quickly after the first time.
+
+<br clear="right">
+
+## Heatmap
+
+<img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/heatmap.png" width="270" align="right" alt="Heatmap">
+
+Tap **Heatmap** to see every trip over a **week, 4 weeks, 3 months or a year** on one map. Roads driven more often glow brighter, from blue through green and yellow to red. Zoom in to see single streets.
+
+The first time a long stretch loads it can take a while: it shows how many weeks are done. Finished weeks are kept on your phone after that.
+
+<br clear="right">
+
+
 ## Replay
 
 Tap a trip to replay it on the map.
@@ -27,5 +53,6 @@ Tap a trip to replay it on the map.
 
 - **Play / pause** the car along its route.
 - **1×, 4× or 16×** speed.
-- **Drag the slider** to jump to any point. The time and the car's speed at that point show above it.
+- **Drag the slider** to jump to any point. The time and the car's speed at that point show above it, with the road's limit when your server [looks them up](Traccar-server#road-speed-limits).
+- **The route is coloured by speed**: green when slow, then yellow, orange and red, to purple above 130 km/h. The bar under the numbers shows which colour is which speed.
 

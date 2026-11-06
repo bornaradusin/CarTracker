@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">CarTracker</string>
+    <string name="widget_description">Where your car is, how long it\'s been parked and its battery</string>
+    <string name="widget_placeholder_name">Your car</string>
+    <string name="widget_placeholder_text">Open CarTracker to show your car here</string>
+    <string name="tile_alarm">Car alarm</string>
 </resources>

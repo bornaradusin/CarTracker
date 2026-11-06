@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.graphics.Brush
+import io.github.bornaradusin.cartracker.ui.map.SpeedColors
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -90,6 +93,7 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
     }
 
     val route = remember(points) { points.map { LatLng(it.latitude, it.longitude) } }
+    val speeds = remember(points) { points.map { it.speedKmh } }
     val current = points.getOrNull(index)
     val stats = remember(points) { tripStats(points) }
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -103,6 +107,7 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
             }.orEmpty(),
             route = route,
             routeDone = index,
+            routeSpeeds = speeds,
             routeColor = c.accentOutline,
             showRouteEnds = true,
             camera = if (route.isNotEmpty()) MapCamera.Fit(route, 1) else null,
@@ -152,10 +157,15 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
                         Stat("Duration", Format.duration(toMillis - fromMillis))
                         Stat("Top speed", Format.speedKmh(stats.topKnots))
                     }
+                    SpeedLegend()
                     Column {
                         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                             Text(Format.time(Format.parse(current?.fixTime)), style = MaterialTheme.typography.labelLarge, color = c.ink)
-                            Text(current?.let { Format.speedKmh(it.speed) } ?: "", style = MaterialTheme.typography.labelLarge, color = c.ink)
+                            Text(
+                                current?.let { p -> Format.speedKmh(p.speed) + (p.roadLimitKmh?.let { " · limit $it" } ?: "") } ?: "",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = current?.let { p -> p.roadLimitKmh?.takeIf { p.speedKmh > it + 0.5 } }?.let { c.warnText } ?: c.ink,
+                            )
                         }
                         Slider(
                             value = index.toFloat(),
@@ -197,6 +207,26 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** What the route's colours mean. */
+@Composable
+private fun SpeedLegend() {
+    val c = LocalAppColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(Brush.horizontalGradient(SpeedColors.stops.map { SpeedColors.color(it.first) })),
+        )
+        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            SpeedColors.stops.forEach { (kmh, _) ->
+                Text(if (kmh == SpeedColors.stops.last().first) "${kmh.toInt()}+ km/h" else "${kmh.toInt()}", style = MaterialTheme.typography.bodySmall, color = c.muted)
             }
         }
     }

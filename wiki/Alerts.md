@@ -40,6 +40,8 @@ With live alerts off, the app checks for new alerts every 15 minutes instead.
 | Low car battery | The car's battery is running low |
 | SOS and tampering | Panic button, tracker removed or tampered with |
 | Other tracker alarms | Anything else the tracker raises |
-| Tracker replies | The tracker confirming a command, like fuel cut or alarm on |
+| Tracker replies | The tracker confirming a command, in plain words: **Alarm turned on**, **Fuel cut**, **Fuel restored** |
 | Tracker offline and back online | The tracker stops reporting, and when it's back (off at first) |
 | Started and stopped moving | Every trip's start and end (off at first) |
+
+The app's own **low battery warning** is set separately, per car, under [Battery](Battery#low-battery-warning).

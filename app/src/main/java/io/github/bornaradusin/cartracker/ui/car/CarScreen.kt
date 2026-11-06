@@ -76,7 +76,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.bornaradusin.cartracker.data.Action
 import io.github.bornaradusin.cartracker.ui.AppViewModel
 import io.github.bornaradusin.cartracker.ui.CarInfo
-import io.github.bornaradusin.cartracker.ui.PendingChange
+import io.github.bornaradusin.cartracker.data.PendingChange
+import io.github.bornaradusin.cartracker.ui.components.rememberIdentityCheck
 import io.github.bornaradusin.cartracker.ui.CarStatus
 import io.github.bornaradusin.cartracker.ui.components.MapButton
 import io.github.bornaradusin.cartracker.ui.components.StatTile
@@ -93,7 +94,7 @@ import io.github.bornaradusin.cartracker.util.Format
 import java.time.Instant
 
 @Composable
-fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> Unit) {
+fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> Unit, onOpenBattery: () -> Unit) {
     val c = LocalAppColors.current
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -111,6 +112,8 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
     var styleMenu by remember { mutableStateOf(false) }
     var carMenu by remember { mutableStateOf(false) }
     var fuelDialog by remember { mutableStateOf(false) }
+    var shareDialog by remember { mutableStateOf(false) }
+    val checkIdentity = rememberIdentityCheck(settings.fuelFingerprint)
     val selectedId = car?.device?.id
     val fix = car?.position?.takeIf { it.hasFix }
 
@@ -301,7 +304,8 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
                             openUrl(context, "https://www.google.com/maps/dir/?api=1&destination=${it.latitude},${it.longitude}&travelmode=driving")
                         }
                     },
-                    onShare = { share(context, info) },
+                    onShare = { shareDialog = true },
+                    onBattery = onOpenBattery,
                     onControls = onOpenControls,
                 )
             } else {
@@ -318,8 +322,19 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
             onDismiss = { fuelDialog = false },
             onAction = { action ->
                 fuelDialog = false
-                vm.send(info, action)
+                checkIdentity("${action.label} · ${info.device.name}") { vm.send(info, action) }
             },
+        )
+    }
+    if (shareDialog && info != null) {
+        ShareDialog(
+            vm = vm,
+            info = info,
+            onSendSpot = {
+                shareDialog = false
+                share(context, info)
+            },
+            onDismiss = { shareDialog = false },
         )
     }
 }
@@ -344,6 +359,7 @@ private fun CarCard(
     onAlarm: () -> Unit,
     onDirections: () -> Unit,
     onShare: () -> Unit,
+    onBattery: () -> Unit,
     onControls: () -> Unit,
 ) {
     val c = LocalAppColors.current
@@ -391,7 +407,14 @@ private fun CarCard(
                 Modifier.weight(1f),
             )
             if (info.status == CarStatus.MOVING) {
-                StatTile("Speed", "${info.speedKmh} km/h", Modifier.weight(1f))
+                // With road speed limits on the server, the road's limit too
+                val roadLimit = info.position?.roadLimitKmh
+                StatTile(
+                    if (roadLimit != null) "Speed · limit $roadLimit" else "Speed",
+                    "${info.speedKmh} km/h",
+                    Modifier.weight(1f),
+                    valueColor = if (roadLimit != null && info.speedKmh > roadLimit) c.warnText else null,
+                )
             } else {
                 StatTile(
                     "Parked for",
@@ -402,12 +425,17 @@ private fun CarCard(
             }
             StatTile("Today", info.todayMeters?.let { Format.distance(it) } ?: "–", Modifier.weight(1f))
             val volts = info.position?.power
+            val low = info.prefs.lowVoltage.takeIf { it > 0 } ?: 11.8
             StatTile(
                 "Battery",
                 volts?.let { String.format(java.util.Locale.US, "%.1f V", it) } ?: "–",
-                Modifier.weight(1f),
-                // A 12 V car battery below 11.8 V while parked is getting low
-                valueColor = if (volts != null && volts in 1.0..11.8) c.warnText else null,
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(onClick = onBattery)
+                    .semantics { contentDescription = "Battery history" },
+                // Below the warning level set for the car (11.8 V unless changed)
+                valueColor = if (volts != null && volts >= 1.0 && volts < low) c.warnText else null,
             )
         }
 

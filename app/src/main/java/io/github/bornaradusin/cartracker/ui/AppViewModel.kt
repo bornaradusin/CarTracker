@@ -9,6 +9,11 @@ import io.github.bornaradusin.cartracker.container
 import io.github.bornaradusin.cartracker.data.Action
 import io.github.bornaradusin.cartracker.data.AlertKind
 import io.github.bornaradusin.cartracker.data.ApiException
+import io.github.bornaradusin.cartracker.data.CommandOptions
+import io.github.bornaradusin.cartracker.data.CommandTarget
+import io.github.bornaradusin.cartracker.data.ParkedTime
+import io.github.bornaradusin.cartracker.data.PendingChange
+import io.github.bornaradusin.cartracker.data.TrackerReply
 import io.github.bornaradusin.cartracker.data.AppSettings
 import io.github.bornaradusin.cartracker.data.Device
 import io.github.bornaradusin.cartracker.data.DevicePrefs
@@ -16,12 +21,13 @@ import io.github.bornaradusin.cartracker.data.Event
 import io.github.bornaradusin.cartracker.data.EventText
 import io.github.bornaradusin.cartracker.data.Geofence
 import io.github.bornaradusin.cartracker.data.Position
-import io.github.bornaradusin.cartracker.data.SavedCommand
 import io.github.bornaradusin.cartracker.data.ServerAddress
 import io.github.bornaradusin.cartracker.data.TrackerCommands
 import io.github.bornaradusin.cartracker.data.TrackerKind
 import io.github.bornaradusin.cartracker.data.Trip
 import io.github.bornaradusin.cartracker.data.UpdateRate
+import io.github.bornaradusin.cartracker.data.VoltPoint
+import kotlinx.coroutines.CancellationException
 import io.github.bornaradusin.cartracker.data.str
 import io.github.bornaradusin.cartracker.ui.map.CarImages
 import io.github.bornaradusin.cartracker.ui.theme.Palette
@@ -53,16 +59,6 @@ import java.time.temporal.ChronoUnit
 
 enum class CarStatus { MOVING, PARKED, OFFLINE }
 
-/** What a tracker answered to a command. */
-data class TrackerReply(val car: String, val command: String, val text: String)
-
-/** A tracker setting sent to the car, applied in the app only once the tracker confirms it. */
-data class PendingChange(val key: String, val on: Boolean) {
-    companion object {
-        const val ALARM = "alarm"
-        const val AUTO_ARM = "auto_arm"
-    }
-}
 
 /** Everything the screens show about one car. */
 data class CarInfo(
@@ -89,6 +85,9 @@ data class CarInfo(
     val speedKmh: Int get() = position?.speedKmh?.toInt() ?: 0
 }
 
+/** A link to follow a car live in a browser, and when it stops working. */
+data class LiveLink(val url: String, val until: Instant)
+
 data class AlertItem(
     val event: Event,
     val deviceName: String,
@@ -111,6 +110,46 @@ data class TripsState(
 
 data class ReplayState(val loading: Boolean = true, val points: List<Position> = emptyList(), val error: String? = null)
 
+data class BatteryState(
+    val deviceId: Long = 0,
+    val hours: Int = 24,
+    val loading: Boolean = false,
+    val points: List<VoltPoint> = emptyList(),
+    val error: String? = null,
+)
+
+enum class StatsPeriod(val label: String) { WEEK("Week"), MONTH("Month"), YEAR("Year") }
+
+/** One bar of the stats chart: a day (week, month) or a month (year). */
+data class StatsBar(val label: String, val meters: Double, val millis: Long, val trips: Int)
+
+data class StatsState(
+    val deviceId: Long = 0,
+    val period: StatsPeriod = StatsPeriod.WEEK,
+    val start: LocalDate = LocalDate.now(),
+    val title: String = "",
+    val loading: Boolean = false,
+    val bars: List<StatsBar> = emptyList(),
+    val meters: Double = 0.0,
+    val millis: Long = 0,
+    val trips: Int = 0,
+    val topKnots: Double = 0.0,
+    val longest: Trip? = null,
+    /** Days so far in the period, for the daily average. */
+    val days: Int = 1,
+    val error: String? = null,
+)
+
+data class HeatState(
+    val deviceId: Long = 0,
+    val weeks: Int = 4,
+    val loading: Boolean = false,
+    val done: Int = 0,
+    val total: Int = 0,
+    val points: List<Pair<Double, Double>> = emptyList(),
+    val error: String? = null,
+)
+
 sealed interface ServerCheck {
     data object Idle : ServerCheck
     data object Checking : ServerCheck
@@ -118,8 +157,6 @@ sealed interface ServerCheck {
     data class Problem(val message: String) : ServerCheck
 }
 
-/** Commands this account may use for a car: Traccar's types for it and its saved commands. */
-data class CommandOptions(val types: Set<String> = emptySet(), val saved: List<SavedCommand> = emptyList(), val loaded: Boolean = false)
 
 @OptIn(FlowPreview::class)
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -142,8 +179,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val parkedSince = MutableStateFlow<Map<Long, Instant>>(emptyMap())
     private val ignitionChanges = MutableStateFlow<Map<Long, Pair<Boolean?, Long>>>(emptyMap())
 
-    private val _commandOptions = MutableStateFlow<Map<Long, CommandOptions>>(emptyMap())
-    val commandOptions: StateFlow<Map<Long, CommandOptions>> = _commandOptions.asStateFlow()
+    val commandOptions: StateFlow<Map<Long, CommandOptions>> = c.commands.options
 
     private val _geofences = MutableStateFlow<Map<Long, List<Geofence>>>(emptyMap())
     val geofences: StateFlow<Map<Long, List<Geofence>>> = _geofences.asStateFlow()
@@ -157,23 +193,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _replay = MutableStateFlow(ReplayState())
     val replay: StateFlow<ReplayState> = _replay.asStateFlow()
 
+    private val _battery = MutableStateFlow(BatteryState())
+    val battery: StateFlow<BatteryState> = _battery.asStateFlow()
+
+    private val _stats = MutableStateFlow(StatsState())
+    val stats: StateFlow<StatsState> = _stats.asStateFlow()
+
+    private val _heat = MutableStateFlow(HeatState())
+    val heat: StateFlow<HeatState> = _heat.asStateFlow()
+
     private val _serverCheck = MutableStateFlow<ServerCheck>(ServerCheck.Idle)
     val serverCheck: StateFlow<ServerCheck> = _serverCheck.asStateFlow()
 
-    private val _reply = MutableStateFlow<TrackerReply?>(null)
-
     /** A tracker reply too long for a snackbar (status, settings), shown in a dialog. */
-    val reply: StateFlow<TrackerReply?> = _reply.asStateFlow()
-    private val replyWatchers = mutableMapOf<Long, Job>()
-
-    private val _pending = MutableStateFlow<Map<Long, PendingChange>>(emptyMap())
+    val reply: StateFlow<TrackerReply?> = c.commands.reply
 
     /** Per car: the setting sent to its tracker and not yet confirmed. */
-    val pending: StateFlow<Map<Long, PendingChange>> = _pending.asStateFlow()
+    val pending: StateFlow<Map<Long, PendingChange>> = c.commands.pending
 
-    private val _busy = MutableStateFlow<String?>(null)
     /** What's being sent right now ("Cut fuel"…), for a spinner. */
-    val busy: StateFlow<String?> = _busy.asStateFlow()
+    val busy: StateFlow<String?> = c.commands.busy
 
     val selectedId: StateFlow<Long> = combine(settings, devices) { s, list ->
         list.firstOrNull { it.id == s.selectedDeviceId }?.id ?: list.firstOrNull()?.id ?: 0L
@@ -197,6 +236,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
     init {
+        viewModelScope.launch { c.commands.messages.collect { _messages.emit(it) } }
         // Live alerts or the 15-minute check, whenever sign-in or the setting changes.
         viewModelScope.launch {
             settings.map { it.signedIn to it.liveAlerts }.distinctUntilChanged().collect {
@@ -303,7 +343,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _alerts.value = AlertsState()
             _trips.value = TripsState()
             _geofences.value = emptyMap()
-            _commandOptions.value = emptyMap()
+            c.commands.clear()
             addresses.value = emptyMap()
             todayMeters.value = emptyMap()
             parkedSince.value = emptyMap()
@@ -375,187 +415,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         runCatching { api.summary(deviceId, start, nowInstant) }.getOrNull()?.firstOrNull()?.let { s ->
             todayMeters.update { it + (deviceId to s.distance) }
         }
-        // Parked since the last drive ended: the start of Traccar's current stop. Traccar only closes a
-        // drive after the car has stood still for a few minutes; until then there's no stop yet.
-        val from = nowInstant.minus(7, ChronoUnit.DAYS)
-        val stops = runCatching { api.stops(deviceId, from, nowInstant) }.getOrNull() ?: return
-        val trips = runCatching { api.trips(deviceId, from, nowInstant) }.getOrNull() ?: return
-        val lastDriveEnd = trips.mapNotNull { Format.parse(it.endTime) }.maxOrNull()
-        val stopStart = stops.mapNotNull { Format.parse(it.startTime) }.maxOrNull()
-        val current = stopStart?.takeIf { lastDriveEnd == null || !it.isBefore(lastDriveEnd.minusSeconds(60)) }
+        // Parked since the last drive ended
+        val current = runCatching { ParkedTime.since(api, deviceId, nowInstant) }.getOrElse { return }
         parkedSince.update { if (current != null) it + (deviceId to current) else it - deviceId }
     }
 
     // ---------- commands ----------
 
-    fun loadCommandOptions(deviceId: Long) = viewModelScope.launch {
-        val types = runCatching { api.commandTypes(deviceId).map { it.type }.toSet() }.getOrDefault(emptySet())
-        val saved = runCatching { api.savedCommands(deviceId).filter { it.id != 0L } }.getOrDefault(emptyList())
-        _commandOptions.update { it + (deviceId to CommandOptions(types, saved, true)) }
-    }
+    private fun target(car: CarInfo) = CommandTarget(car.device.id, car.device.name, car.kind, car.device.online)
 
-    private suspend fun options(deviceId: Long): CommandOptions {
-        _commandOptions.value[deviceId]?.takeIf { it.loaded }?.let { return it }
-        val types = runCatching { api.commandTypes(deviceId).map { it.type }.toSet() }.getOrDefault(emptySet())
-        val saved = runCatching { api.savedCommands(deviceId).filter { it.id != 0L } }.getOrDefault(emptyList())
-        return CommandOptions(types, saved, true).also { o -> _commandOptions.update { it + (deviceId to o) } }
-    }
+    fun loadCommandOptions(deviceId: Long) = viewModelScope.launch { c.commands.load(deviceId) }
 
-    fun canDo(car: CarInfo, action: Action): Boolean {
-        val o = _commandOptions.value[car.device.id] ?: return car.kind == TrackerKind.MICODUS
-        return TrackerCommands.supports(car.kind, action, o.types)
-    }
+    fun canDo(car: CarInfo, action: Action): Boolean = c.commands.supports(target(car), action)
 
-    fun send(car: CarInfo, action: Action, quiet: Boolean = false) = viewModelScope.launch {
-        val o = options(car.device.id)
-        val command = TrackerCommands.command(car.kind, action, car.device.id, o.types)
-        if (command == null) {
-            say("${car.device.name}'s tracker can't do that.")
-            return@launch
-        }
-        val change = when (action) {
-            Action.ARM, Action.DISARM -> PendingChange(PendingChange.ALARM, action == Action.ARM)
-            Action.AUTO_ARM_ON, Action.AUTO_ARM_OFF -> PendingChange(PendingChange.AUTO_ARM, action == Action.AUTO_ARM_ON)
-            Action.VIBRATION_ON, Action.VIBRATION_OFF -> PendingChange(AlertKind.VIBRATION.key, action == Action.VIBRATION_ON)
-            Action.LOW_BATTERY_ON, Action.LOW_BATTERY_OFF -> PendingChange(AlertKind.LOW_BATTERY.key, action == Action.LOW_BATTERY_ON)
-            Action.UNPLUGGED_ON, Action.UNPLUGGED_OFF -> PendingChange(AlertKind.UNPLUGGED.key, action == Action.UNPLUGGED_ON)
-            else -> null
-        }
-        // MiCODUS trackers answer every command, so their settings wait for that answer.
-        // Other trackers may never answer, so theirs change straight away.
-        if (change == null || car.kind != TrackerKind.MICODUS) {
-            if (deliver(car, action.label, command, quiet) && change != null) applyChange(car, change)
-            return@launch
-        }
-        if (!car.device.online) {
-            say("${car.device.name} is offline, so nothing was changed. Try again once it's back online.")
-            return@launch
-        }
-        deliver(car, action.label, command, quiet = false, change = change)
-    }
+    fun send(car: CarInfo, action: Action, quiet: Boolean = false) = c.commands.send(target(car), action, quiet)
 
-    /** Saves a tracker setting the tracker has confirmed (or that can't be confirmed). */
-    private suspend fun applyChange(car: CarInfo, change: PendingChange) {
-        when (change.key) {
-            PendingChange.ALARM -> c.settings.updateDevice(car.device.id) {
-                it.copy(manualArmed = change.on, manualAt = System.currentTimeMillis())
-            }
-            PendingChange.AUTO_ARM -> c.settings.updateDevice(car.device.id) { it.copy(autoArm = change.on) }
-            else -> AlertKind.entries.firstOrNull { it.key == change.key }?.let { c.settings.setAlertKind(it, change.on) }
-        }
-    }
-
-    fun setUpdateRate(car: CarInfo, rate: UpdateRate) = viewModelScope.launch {
-        val o = options(car.device.id)
-        val command = TrackerCommands.updateRate(car.kind, rate, car.device.id, o.types)
-        if (command == null) say("${car.device.name}'s tracker can't change that from here.")
-        else deliver(car, "Update rate", command, quiet = false)
-    }
+    fun setUpdateRate(car: CarInfo, rate: UpdateRate) = c.commands.setUpdateRate(target(car), rate)
 
     /** A saved command, a Traccar type, or custom text from the advanced list. */
-    fun sendAdvanced(car: CarInfo, label: String, command: JsonObject) = viewModelScope.launch {
-        deliver(car, label, command, quiet = false, preferSaved = false)
-    }
+    fun sendAdvanced(car: CarInfo, label: String, command: JsonObject) = c.commands.sendAdvanced(target(car), label, command)
 
-    fun customCommand(car: CarInfo, text: String) {
-        if (text.isBlank()) return
-        val command = if (car.kind == TrackerKind.MICODUS) {
-            TrackerCommands.custom(car.device.id, text.trim())
-        } else {
-            kotlinx.serialization.json.buildJsonObject {
-                put("deviceId", JsonPrimitive(car.device.id))
-                put("type", JsonPrimitive("custom"))
-                put("textChannel", JsonPrimitive(false))
-                put("attributes", JsonObject(mapOf("data" to JsonPrimitive(text.trim()))))
-            }
-        }
-        sendAdvanced(car, text.trim(), command)
-    }
+    fun customCommand(car: CarInfo, text: String) = c.commands.customCommand(target(car), text)
 
-    private suspend fun deliver(
-        car: CarInfo,
-        label: String,
-        command: JsonObject,
-        quiet: Boolean,
-        preferSaved: Boolean = true,
-        change: PendingChange? = null,
-    ): Boolean {
-        if (_pending.value.containsKey(car.device.id)) {
-            say("Still waiting for ${car.device.name} to confirm the last change. Try again in a moment.")
-            return false
-        }
-        _busy.value = label
-        return try {
-            val o = options(car.device.id)
-            val toSend = if (preferSaved) TrackerCommands.preferSaved(command, o.saved, car.device.id) else command
-            val sentAt = Instant.now()
-            val now = api.sendCommand(toSend)
-            if (change != null) _pending.update { it + (car.device.id to change) }
-            if (!quiet) {
-                say(
-                    when {
-                        now -> "$label: sent to ${car.device.name}. Waiting for it to confirm…"
-                        change != null -> "${car.device.name} went offline. It gets this when it reconnects, and the setting changes once it confirms."
-                        else -> "${car.device.name} is offline. It gets this when it next connects."
-                    },
-                )
-            }
-            watchReply(car, label, sentAt, if (now) 90_000L else 15 * 60_000L, change)
-            true
-        } catch (e: ApiException) {
-            say(
-                when (e.code) {
-                    400, 403 -> "Your account isn't allowed to send that. Ask the server's admin, or add it as a saved command."
-                    else -> e.message ?: "Couldn't send that."
-                },
-            )
-            false
-        } catch (e: Exception) {
-            say("Couldn't reach the server.")
-            false
-        } finally {
-            _busy.value = null
-        }
-    }
-
-    /**
-     * Waits for the tracker to answer [label] (Traccar records the answer as a "commandResult"
-     * event) and shows it. A [change] is saved only once the tracker confirms it; with no answer
-     * in time, nothing changes.
-     */
-    private fun watchReply(car: CarInfo, label: String, sentAt: Instant, windowMs: Long, change: PendingChange?) {
-        val id = car.device.id
-        replyWatchers.remove(id)?.cancel()
-        replyWatchers[id] = viewModelScope.launch {
-            try {
-                val from = sentAt.minusSeconds(5)
-                val until = System.currentTimeMillis() + windowMs
-                while (isActive && System.currentTimeMillis() < until) {
-                    delay(3_000)
-                    val event = runCatching { api.events(listOf(id), from, Instant.now().plusSeconds(60)) }
-                        .getOrNull()
-                        ?.lastOrNull { it.type == "commandResult" }
-                        ?: continue
-                    val raw = event.attributes.str("result").orEmpty()
-                    val text = TrackerCommands.readableReply(raw)
-                    if (text.isEmpty()) continue
-                    val failed = TrackerCommands.isFailure(raw)
-                    if (change != null && !failed) applyChange(car, change)
-                    val shown = if (change != null && failed) "$text. Nothing was changed." else text
-                    if (shown.length <= 60 && '\n' !in shown) say("${car.device.name}: $shown")
-                    else _reply.value = TrackerReply(car.device.name, label, shown)
-                    return@launch
-                }
-                if (change != null && isActive) say("${car.device.name} didn't confirm, so nothing was changed.")
-            } finally {
-                if (change != null) _pending.update { it - id }
-            }
-        }
-    }
-
-    fun dismissReply() {
-        _reply.value = null
-    }
+    fun dismissReply() = c.commands.dismissReply()
 
     // ---------- alerts set on the tracker ----------
 
@@ -626,6 +508,75 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             true
         } catch (e: Exception) {
             false
+        }
+    }
+
+    // ---------- live links and the odometer ----------
+
+    /**
+     * A link anyone can open to follow [car] live in a browser for [hours]. Null (with a message)
+     * when the server says no. Traccar allows one link per car at a time: an older one still
+     * running is replaced when this account may remove it (admins).
+     */
+    suspend fun liveLink(car: CarInfo, hours: Long): LiveLink? {
+        val until = Instant.now().plus(hours, ChronoUnit.HOURS)
+        val token = try {
+            try {
+                api.shareDevice(car.device.id, until)
+            } catch (e: ApiException) {
+                if (e.code == 409 && removeLiveLink(car)) api.shareDevice(car.device.id, until) else throw e
+            }
+        } catch (e: ApiException) {
+            say(
+                when (e.code) {
+                    409 -> "${car.device.name} already has a live link running. It stops by itself when it ends."
+                    400, 401, 403 -> "This server doesn't allow live links, or your account can't make them."
+                    else -> e.message ?: "Couldn't make a live link."
+                },
+            )
+            return null
+        } catch (e: Exception) {
+            say("Couldn't reach the server.")
+            return null
+        }
+        c.settings.updateDevice(car.device.id) { it.copy(shareToken = token, shareUntil = until.toEpochMilli()) }
+        return LiveLink(api.shareUrl(token), until)
+    }
+
+    /** The car's current live link, while it lasts. */
+    fun currentLiveLink(car: CarInfo): LiveLink? {
+        val until = car.prefs.shareUntil
+        if (car.prefs.shareToken.isBlank() || until <= System.currentTimeMillis()) return null
+        return LiveLink(api.shareUrl(car.prefs.shareToken), Instant.ofEpochMilli(until))
+    }
+
+    fun stopLiveLink(car: CarInfo) = viewModelScope.launch {
+        val until = car.prefs.shareUntil
+        if (removeLiveLink(car)) {
+            c.settings.updateDevice(car.device.id) { it.copy(shareToken = "", shareUntil = 0) }
+            say("The live link for ${car.device.name} is stopped.")
+        } else {
+            say("Your account can't stop live links on this server. It stops by itself at ${Format.time(Instant.ofEpochMilli(until))}.")
+        }
+    }
+
+    /** Ends a live link early by removing the temporary account Traccar made for it. Only admins can. */
+    private suspend fun removeLiveLink(car: CarInfo): Boolean {
+        val email = "${settings.value.email}:${car.device.uniqueId}"
+        val share = runCatching { api.users() }.getOrNull()?.firstOrNull { it.email.equals(email, ignoreCase = true) } ?: return false
+        return runCatching { api.deleteUser(share.id) }.isSuccess
+    }
+
+    /** Sets the car's odometer to [km], so trips and totals carry on from the car's real mileage. */
+    fun setOdometer(car: CarInfo, km: Double) = viewModelScope.launch {
+        try {
+            api.setOdometer(car.device.id, km * 1_000)
+            runCatching { live.refresh() }
+            say("${car.device.name}'s odometer is set to ${Format.kilometres(km * 1_000)}.")
+        } catch (e: ApiException) {
+            say(if (e.code == 400 || e.code == 403) "Your account can't change the odometer on this server." else e.message ?: "Couldn't set the odometer.")
+        } catch (e: Exception) {
+            say("Couldn't reach the server.")
         }
     }
 
@@ -768,12 +719,126 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ---------- battery history ----------
+
+    private var batteryJob: Job? = null
+
+    fun loadBattery(deviceId: Long, hours: Int) {
+        batteryJob?.cancel()
+        batteryJob = viewModelScope.launch {
+            _battery.value = BatteryState(deviceId, hours, loading = true, points = _battery.value.takeIf { it.deviceId == deviceId && it.hours == hours }?.points.orEmpty())
+            val to = Instant.now()
+            _battery.value = try {
+                BatteryState(deviceId, hours, points = c.history.voltages(deviceId, to.minus(hours.toLong(), ChronoUnit.HOURS), to))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                BatteryState(deviceId, hours, error = "Couldn't load the battery readings.")
+            }
+        }
+    }
+
+    /** The app's low-battery warning level for the car, in volts; 0 turns it off. */
+    fun setLowVoltage(car: CarInfo, volts: Double) = viewModelScope.launch {
+        c.settings.updateDevice(car.device.id) { it.copy(lowVoltage = volts, batteryWarned = false) }
+    }
+
+    // ---------- stats ----------
+
+    private var statsJob: Job? = null
+
+    /** Distance, driving time and trips for the week, month or year that includes [anchor]. */
+    fun loadStats(deviceId: Long, period: StatsPeriod, anchor: LocalDate) {
+        statsJob?.cancel()
+        val start = when (period) {
+            StatsPeriod.WEEK -> anchor.with(java.time.DayOfWeek.MONDAY)
+            StatsPeriod.MONTH -> anchor.withDayOfMonth(1)
+            StatsPeriod.YEAR -> anchor.withDayOfYear(1)
+        }
+        val end = when (period) {
+            StatsPeriod.WEEK -> start.plusWeeks(1)
+            StatsPeriod.MONTH -> start.plusMonths(1)
+            StatsPeriod.YEAR -> start.plusYears(1)
+        }
+        val title = Format.period(period.name, start, end)
+        statsJob = viewModelScope.launch {
+            val previous = _stats.value.takeIf { it.deviceId == deviceId && it.period == period && it.start == start }
+            _stats.value = (previous ?: StatsState(deviceId, period, start, title)).copy(loading = true, error = null)
+            _stats.value = try {
+                val trips = c.history.trips(deviceId, Format.startOfDay(start), Format.startOfDay(end))
+                statsOf(deviceId, period, start, end, title, trips)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                StatsState(deviceId, period, start, title, error = "Couldn't load the trips for this ${period.label.lowercase()}.")
+            }
+        }
+    }
+
+    private fun statsOf(deviceId: Long, period: StatsPeriod, start: LocalDate, end: LocalDate, title: String, trips: List<Trip>): StatsState {
+        val byDay = trips.groupBy { t -> Format.parse(t.startTime)?.let { Format.localDate(it) } }
+        val bars = if (period == StatsPeriod.YEAR) {
+            (0 until 12).map { i ->
+                val month = start.plusMonths(i.toLong())
+                val list = trips.filter { t -> Format.parse(t.startTime)?.let { Format.localDate(it) }?.let { it.year == month.year && it.month == month.month } == true }
+                StatsBar(Format.monthLetter(month), list.sumOf { it.distance }, list.sumOf { it.duration }, list.size)
+            }
+        } else {
+            generateSequence(start) { it.plusDays(1) }.takeWhile { it.isBefore(end) }.map { day ->
+                val list = byDay[day].orEmpty()
+                StatsBar(if (period == StatsPeriod.WEEK) Format.dayShort(day) else day.dayOfMonth.toString(), list.sumOf { it.distance }, list.sumOf { it.duration }, list.size)
+            }.toList()
+        }
+        val today = LocalDate.now()
+        val days = when {
+            today.isBefore(start) -> 1
+            today.isBefore(end) -> (ChronoUnit.DAYS.between(start, today) + 1).toInt()
+            else -> ChronoUnit.DAYS.between(start, end).toInt()
+        }.coerceAtLeast(1)
+        return StatsState(
+            deviceId = deviceId,
+            period = period,
+            start = start,
+            title = title,
+            bars = bars,
+            meters = trips.sumOf { it.distance },
+            millis = trips.sumOf { it.duration },
+            trips = trips.size,
+            topKnots = trips.maxOfOrNull { it.maxSpeed } ?: 0.0,
+            longest = trips.maxByOrNull { it.distance },
+            days = days,
+        )
+    }
+
+    // ---------- heatmap ----------
+
+    private var heatJob: Job? = null
+
+    fun loadHeat(deviceId: Long, weeks: Int) {
+        heatJob?.cancel()
+        heatJob = viewModelScope.launch {
+            val previous = _heat.value.takeIf { it.deviceId == deviceId && it.weeks == weeks }?.points.orEmpty()
+            _heat.value = HeatState(deviceId, weeks, loading = true, points = previous)
+            _heat.value = try {
+                val points = c.history.places(deviceId, weeks) { done, total ->
+                    _heat.update { if (it.deviceId == deviceId && it.weeks == weeks) it.copy(done = done, total = total) else it }
+                }
+                HeatState(deviceId, weeks, points = points)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                HeatState(deviceId, weeks, error = "Couldn't load where ${devices.value.firstOrNull { it.id == deviceId }?.name ?: "the car"} has been.")
+            }
+        }
+    }
+
     // ---------- settings ----------
 
     fun setTheme(value: String) = viewModelScope.launch { c.settings.setTheme(value) }
     fun setAccent(value: String) = viewModelScope.launch { c.settings.setAccent(value) }
     fun setMapStyle(value: String) = viewModelScope.launch { c.settings.setMapStyle(value) }
     fun setAdvanced(value: Boolean) = viewModelScope.launch { c.settings.setAdvancedCommands(value) }
+    fun setFuelFingerprint(value: Boolean) = viewModelScope.launch { c.settings.setFuelFingerprint(value) }
     fun setLiveAlerts(value: Boolean) = viewModelScope.launch { c.settings.setLiveAlerts(value) }
     fun setAlertFilter(kind: AlertKind, on: Boolean) = viewModelScope.launch { c.settings.setAlertKind(kind, on) }
 

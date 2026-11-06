@@ -8,9 +8,11 @@
 - [Map](Map)
 - [Controls](Controls)
 - [Trips](Trips)
+- [Battery](Battery)
 - [Alerts](Alerts)
 - [Places](Places)
 - [Look and colours](Look-and-colours)
+- [Widget and quick settings](Home-screen)
 
 **Servers and trackers**
 - [Your Traccar server](Traccar-server)

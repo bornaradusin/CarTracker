@@ -172,6 +172,16 @@ def main():
     _, card_y = find("Parked")
     swipe(540, card_y, 540, card_y - 1400, ms=500)
 
+    # Battery history, from the battery tile
+    tap("Battery history")
+    shot("battery", settle=5)
+    shell("input", "keyevent", "4")
+    time.sleep(2)
+    # Sharing: where it is now, or a live link
+    tap("Share")
+    shot("share")
+    tap("Close")
+
     # Controls
     tap("All controls")
     shot("controls")
@@ -183,6 +193,14 @@ def main():
     # Trips and a replay
     tap("Trips")
     shot("trips", settle=4)
+    tap("Stats")
+    shot("stats", settle=5)
+    shell("input", "keyevent", "4")
+    time.sleep(2)
+    tap("Heatmap")
+    shot("heatmap", settle=12)
+    shell("input", "keyevent", "4")
+    time.sleep(2)
     tap(" · top ", exact=False)
     shot("replay", settle=8)
     shell("input", "keyevent", "4")

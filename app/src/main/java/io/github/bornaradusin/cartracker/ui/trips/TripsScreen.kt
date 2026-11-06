@@ -56,7 +56,12 @@ import io.github.bornaradusin.cartracker.util.Format
 import java.time.LocalDate
 
 @Composable
-fun TripsScreen(vm: AppViewModel, onOpenTrip: (deviceId: Long, fromMillis: Long, toMillis: Long) -> Unit) {
+fun TripsScreen(
+    vm: AppViewModel,
+    onOpenTrip: (deviceId: Long, fromMillis: Long, toMillis: Long) -> Unit,
+    onOpenStats: () -> Unit,
+    onOpenHeatmap: () -> Unit,
+) {
     val c = LocalAppColors.current
     val car by vm.selectedCar.collectAsStateWithLifecycle()
     val cars by vm.cars.collectAsStateWithLifecycle()
@@ -116,6 +121,12 @@ fun TripsScreen(vm: AppViewModel, onOpenTrip: (deviceId: Long, fromMillis: Long,
             }
         }
         item { Summary(trips) }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                MoreButton(Ic.chart, "Stats", "Week, month, year", Modifier.weight(1f), onOpenStats)
+                MoreButton(Ic.flame, "Heatmap", "Where it's been", Modifier.weight(1f), onOpenHeatmap)
+            }
+        }
         when {
             state.loading -> item {
                 Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = c.accentOutline) }
@@ -135,6 +146,22 @@ fun TripsScreen(vm: AppViewModel, onOpenTrip: (deviceId: Long, fromMillis: Long,
                     val to = Format.parse(trip.endTime)?.toEpochMilli() ?: return@TripCard
                     onOpenTrip(deviceId, from, to)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoreButton(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, hint: String, modifier: Modifier, onClick: () -> Unit) {
+    val c = LocalAppColors.current
+    Surface(onClick = onClick, shape = RoundedCornerShape(18.dp), color = c.surface, contentColor = c.ink, modifier = modifier) {
+        Row(Modifier.heightIn(min = 60.dp).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(c.accentTint), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = c.accentText, modifier = Modifier.size(20.dp))
+            }
+            Column {
+                Text(title, style = MaterialTheme.typography.labelLarge, color = c.ink)
+                Text(hint, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1)
             }
         }
     }

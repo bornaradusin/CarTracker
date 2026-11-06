@@ -83,6 +83,12 @@ data class Position(
 
     /** The car battery's voltage, as the tracker measures it. */
     val power: Double? get() = attributes.num("power")
+
+    /** Traccar's odometer for the car, in metres. */
+    val totalDistance: Double? get() = attributes.num("totalDistance")
+
+    /** The road's speed limit in km/h, when the server looks them up (Traccar's speedLimit, in knots). */
+    val roadLimitKmh: Int? get() = attributes.num("speedLimit")?.takeIf { it > 0 }?.let { kotlin.math.round(it * 1.852).toInt() }
     val speedKmh: Double get() = speed * 1.852
     val hasFix: Boolean get() = latitude != 0.0 || longitude != 0.0
 }

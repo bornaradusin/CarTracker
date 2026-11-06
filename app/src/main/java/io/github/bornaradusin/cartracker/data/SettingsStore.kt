@@ -35,6 +35,13 @@ data class DevicePrefs(
     val trackerType: String = "auto",
     /** Speed alert limit in km/h; 0 = off. */
     val speedLimit: Int = 0,
+    /** Warn when the car battery drops below this many volts while parked; 0 = off. */
+    val lowVoltage: Double = 11.8,
+    /** A low-battery warning was sent and the battery hasn't recovered since. */
+    val batteryWarned: Boolean = false,
+    /** The last live link made for this car, and when it ends. */
+    val shareToken: String = "",
+    val shareUntil: Long = 0,
 )
 
 data class AppSettings(
@@ -55,6 +62,8 @@ data class AppSettings(
     val lastSeenEventId: Long = 0,
     /** Alerts up to this event were cleared from the list (Traccar itself keeps them). */
     val clearedEventId: Long = 0,
+    /** Ask for a fingerprint (or the phone's PIN) before cutting or restoring fuel. */
+    val fuelFingerprint: Boolean = true,
 ) {
     val signedIn: Boolean get() = token != null && server.isNotBlank()
     fun prefs(deviceId: Long): DevicePrefs = devicePrefs[deviceId] ?: DevicePrefs()
@@ -79,6 +88,7 @@ class SettingsStore(private val context: Context) {
         val lastEventCheck = longPreferencesKey("last_event_check")
         val lastSeenEventId = longPreferencesKey("last_seen_event_id")
         val clearedEventId = longPreferencesKey("cleared_event_id")
+        val fuelFingerprint = booleanPreferencesKey("fuel_fingerprint")
     }
 
     private val prefsSerializer = MapSerializer(Long.serializer(), DevicePrefs.serializer())
@@ -102,6 +112,7 @@ class SettingsStore(private val context: Context) {
             lastEventCheck = p[K.lastEventCheck] ?: 0,
             lastSeenEventId = p[K.lastSeenEventId] ?: 0,
             clearedEventId = p[K.clearedEventId] ?: 0,
+            fuelFingerprint = p[K.fuelFingerprint] ?: true,
         )
     }
 
@@ -132,6 +143,7 @@ class SettingsStore(private val context: Context) {
     suspend fun setLiveAlerts(value: Boolean) = context.dataStore.edit { it[K.liveAlerts] = value }
     suspend fun setAdvancedCommands(value: Boolean) = context.dataStore.edit { it[K.advanced] = value }
     suspend fun setSelectedDevice(id: Long) = context.dataStore.edit { it[K.selected] = id }
+    suspend fun setFuelFingerprint(value: Boolean) = context.dataStore.edit { it[K.fuelFingerprint] = value }
     suspend fun setLastSeenEvent(id: Long) = context.dataStore.edit { it[K.lastSeenEventId] = id }
 
     /** Hides every alert up to [id] and marks them seen. */

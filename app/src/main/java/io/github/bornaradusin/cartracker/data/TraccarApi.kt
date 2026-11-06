@@ -134,6 +134,38 @@ class TraccarApi {
         return AppJson.decodeFromString(execute(request(baseUrl, "/api/devices/$id").put(body).build()).body)
     }
 
+    /** Sets the car's odometer ([meters]) from now on. */
+    suspend fun setOdometer(deviceId: Long, meters: Double) {
+        val json = buildJsonObject {
+            put("deviceId", deviceId)
+            put("totalDistance", meters)
+        }
+        val body = AppJson.encodeToString(JsonObject.serializer(), json).toRequestBody(JSON_TYPE)
+        execute(request(baseUrl, "/api/devices/$deviceId/accumulators").put(body).build())
+    }
+
+    // ---- live links ----
+
+    /**
+     * A link anyone can open in a browser to follow the car until [until]: Traccar makes a temporary,
+     * read-only account for it that can't send commands, and removes it after it ends.
+     */
+    suspend fun shareDevice(deviceId: Long, until: Instant): String {
+        val form = FormBody.Builder().add("deviceId", deviceId.toString()).add("expiration", iso(until)).build()
+        val token = execute(request(baseUrl, "/api/share/device").post(form).build()).body.trim().trim('"')
+        if (token.isEmpty()) throw ApiException(500, "The server didn't make a link.")
+        return token
+    }
+
+    fun shareUrl(token: String): String =
+        url(baseUrl, "/", listOf("token" to token)).toString()
+
+    suspend fun users(): List<User> = AppJson.decodeFromString(get("/api/users"))
+
+    suspend fun deleteUser(id: Long) {
+        execute(request(baseUrl, "/api/users/$id").delete().build())
+    }
+
     suspend fun positions(): List<Position> = AppJson.decodeFromString(get("/api/positions"))
 
     suspend fun positionsById(ids: Collection<Long>): List<Position> {
@@ -151,6 +183,27 @@ class TraccarApi {
 
     suspend fun route(deviceId: Long, from: Instant, to: Instant): List<Position> =
         AppJson.decodeFromString(get("/api/reports/route", range(listOf(deviceId), from, to)))
+
+    /** Every position in the range as plain coordinates (Traccar's KML export): far smaller than the full route. */
+    suspend fun coordinates(deviceId: Long, from: Instant, to: Instant): List<Pair<Double, Double>> {
+        val kml = execute(
+            Request.Builder().url(url(baseUrl, "/api/positions/kml", range(listOf(deviceId), from, to))).header("Accept", "*/*").get().build(),
+        ).body
+        val result = ArrayList<Pair<Double, Double>>()
+        var start = kml.indexOf("<coordinates>")
+        while (start >= 0) {
+            val end = kml.indexOf("</coordinates>", start)
+            if (end < 0) break
+            kml.substring(start + "<coordinates>".length, end).trim().split(Regex("\\s+")).forEach { triple ->
+                val parts = triple.split(',')
+                val lon = parts.getOrNull(0)?.toDoubleOrNull()
+                val lat = parts.getOrNull(1)?.toDoubleOrNull()
+                if (lat != null && lon != null && (lat != 0.0 || lon != 0.0)) result += lat to lon
+            }
+            start = kml.indexOf("<coordinates>", end)
+        }
+        return result
+    }
 
     suspend fun summary(deviceId: Long, from: Instant, to: Instant): List<Summary> =
         AppJson.decodeFromString(get("/api/reports/summary", range(listOf(deviceId), from, to)))

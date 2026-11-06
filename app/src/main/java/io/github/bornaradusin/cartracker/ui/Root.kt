@@ -59,6 +59,9 @@ import io.github.bornaradusin.cartracker.ui.theme.Ic
 import io.github.bornaradusin.cartracker.ui.theme.LocalAppColors
 import io.github.bornaradusin.cartracker.ui.trips.ReplayScreen
 import io.github.bornaradusin.cartracker.ui.trips.TripsScreen
+import io.github.bornaradusin.cartracker.ui.trips.StatsScreen
+import io.github.bornaradusin.cartracker.ui.trips.HeatmapScreen
+import io.github.bornaradusin.cartracker.ui.battery.BatteryScreen
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
 
@@ -104,15 +107,28 @@ private fun MainShell(vm: AppViewModel, openAlertsSignal: Int) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             NavHost(nav, startDestination = "car") {
                 composable("car") {
-                    CarScreen(vm, onOpenControls = { nav.navigate("controls") }, onOpenAlerts = { nav.goTab("alerts") })
+                    CarScreen(
+                        vm,
+                        onOpenControls = { nav.navigate("controls") },
+                        onOpenAlerts = { nav.goTab("alerts") },
+                        onOpenBattery = { nav.navigate("battery") },
+                    )
                 }
                 composable("trips") {
-                    TripsScreen(vm, onOpenTrip = { id, from, to -> nav.navigate("replay/$id/$from/$to") })
+                    TripsScreen(
+                        vm,
+                        onOpenTrip = { id, from, to -> nav.navigate("replay/$id/$from/$to") },
+                        onOpenStats = { nav.navigate("stats") },
+                        onOpenHeatmap = { nav.navigate("heatmap") },
+                    )
                 }
                 composable("alerts") { AlertsScreen(vm) }
                 composable("more") { MoreScreen(vm, onOpenAlertTypes = { nav.navigate("alert-types") }) }
                 composable("controls") { ControlsScreen(vm, onBack = { nav.popBackStack() }) }
                 composable("alert-types") { AlertTypesScreen(vm, onBack = { nav.popBackStack() }) }
+                composable("battery") { BatteryScreen(vm, onBack = { nav.popBackStack() }) }
+                composable("stats") { StatsScreen(vm, onBack = { nav.popBackStack() }) }
+                composable("heatmap") { HeatmapScreen(vm, onBack = { nav.popBackStack() }) }
                 composable(
                     "replay/{id}/{from}/{to}",
                     arguments = listOf(

@@ -155,6 +155,37 @@ object TrackerCommands {
         }
     }
 
+    /**
+     * A tracker reply as someone would say it: MiCODUS answers in short codes ("SF OK" when the alarm
+     * goes on, "CF OK" when it goes off), so the ones the app sends are written out in plain words.
+     * Anything else is shown as the tracker wrote it, tidied up.
+     */
+    fun friendlyReply(reply: String): String {
+        val text = reply.replace("\u0000", "").trim()
+        // Long answers (status, settings) carry details, so they stay as they are
+        if (text.isEmpty() || isFailure(text) || text.length > 48 || '\n' in text) return readableReply(text)
+        val upper = text.uppercase()
+        return knownReplies.firstOrNull { (pattern, _) -> pattern.containsMatchIn(upper) }?.second ?: readableReply(text)
+    }
+
+    private val knownReplies = listOf(
+        Regex("^SF\\s*OK") to "Alarm turned on",
+        Regex("^CF\\s*OK") to "Alarm turned off",
+        Regex("RELAY\\s*[,:=]?\\s*2\\b") to "Fuel will be cut when the car slows down",
+        Regex("RELAY\\s*[,:=]?\\s*1\\b|CUT\\s*OFF\\s*(THE\\s*)?(FUEL|OIL|POWER)|(FUEL|OIL)\\s*(SUPPLY\\s*)?(IS\\s*)?CUT") to "Fuel cut",
+        Regex("RELAY\\s*[,:=]?\\s*0\\b|RESTORE\\s*(THE\\s*)?(FUEL|OIL|POWER)|(FUEL|OIL)\\s*(SUPPLY\\s*)?(IS\\s*)?RESTORED") to "Fuel restored",
+        Regex("ACCARM\\s*[,:=]?\\s*ON") to "Arms automatically after the ignition goes off",
+        Regex("ACCARM\\s*[,:=]?\\s*OFF") to "Stopped arming automatically",
+        Regex("SENALM\\s*[,:=]?\\s*ON|VIBRAT\\w*\\s*ALARM\\s*(IS\\s*)?(ON|OPEN|ENABLE)") to "Vibration alert turned on",
+        Regex("SENALM\\s*[,:=]?\\s*OFF|VIBRAT\\w*\\s*ALARM\\s*(IS\\s*)?(OFF|CLOSE|DISABLE)") to "Vibration alert turned off",
+        Regex("LVALM\\s*[,:=]?\\s*ON") to "Low battery alert turned on",
+        Regex("LVALM\\s*[,:=]?\\s*OFF") to "Low battery alert turned off",
+        Regex("PWRALM\\s*[,:=]?\\s*ON") to "Unplugged alert turned on",
+        Regex("PWRALM\\s*[,:=]?\\s*OFF") to "Unplugged alert turned off",
+        Regex("^TIMER\\b.*OK") to "Update rate changed",
+        Regex("^RESTART\\b|^RESET\\b.*OK") to "Tracker restarting",
+    )
+
     /** True when a reply says the command didn't work ("ERROR", "FAILED", "INVALID"…). */
     fun isFailure(reply: String): Boolean =
         Regex("\\b(error|fail|failed|failure|invalid|wrong|not support(ed)?|unknown)\\b", RegexOption.IGNORE_CASE)

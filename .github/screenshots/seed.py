@@ -100,7 +100,8 @@ def drive(route, start, speed_kmh=32.0, fast_leg=None):
     t += 60
     for i in range(len(route) - 1):
         a, b = route[i], route[i + 1]
-        speed = 62.0 if fast_leg == i else speed_kmh
+        # A little faster or slower on each stretch, so the replay's speed colours vary
+        speed = 62.0 if fast_leg == i else speed_kmh + (i % 4) * 7 - 7
         steps = max(1, int(metres(a, b) / (speed / 3.6 * 15)))
         for s in range(1, steps + 1):
             f = s / steps
@@ -114,9 +115,11 @@ def drive(route, start, speed_kmh=32.0, fast_leg=None):
 
 
 def park(point, start, until, **extra):
+    """A report every 10 minutes while parked; the battery drifts down slowly, as a real one does."""
     t = start + 600
     while t < until:
-        send(point, t, **extra)
+        volts = max(12.3, 12.68 - (t - start) / 3600 * 0.012)
+        send(point, t, power=f"{volts:.2f}", **extra)
         t += 600
 
 

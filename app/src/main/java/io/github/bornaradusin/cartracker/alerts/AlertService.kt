@@ -8,6 +8,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import io.github.bornaradusin.cartracker.container
+import io.github.bornaradusin.cartracker.shortcuts.CarWidget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
@@ -45,6 +46,13 @@ class AlertService : Service() {
             while (isActive) {
                 runCatching { c.alerts.check() }
                 delay(5 * 60_000L)
+            }
+        }
+        // The widget's "parked for" time moves on every minute
+        scope.launch {
+            while (isActive) {
+                delay(60_000L)
+                if (CarWidget.hasWidgets(this@AlertService)) runCatching { CarWidget.refresh(this@AlertService, fetch = false) }
             }
         }
         scope.launch {
