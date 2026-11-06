@@ -12,6 +12,9 @@ name: Build
 
 on:
   push:
+    paths-ignore:
+      - "traccar/**"
+      - ".github/workflows/traccar.yml"
   workflow_dispatch:
 
 permissions:

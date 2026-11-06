@@ -1,0 +1,68 @@
+# Builds the patched Traccar image (traccar/README.md) and publishes it to
+# ghcr.io/bornaradusin/cartracker-traccar. Runs when anything in traccar/ changes, or by hand.
+name: Traccar image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "traccar/**"
+      - ".github/workflows/traccar.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  TRACCAR_VERSION: "6.17.0"
+  IMAGE: ghcr.io/bornaradusin/cartracker-traccar
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get Traccar ${{ env.TRACCAR_VERSION }}
+        run: git clone --depth 1 --branch "v$TRACCAR_VERSION" https://github.com/traccar/traccar.git upstream
+
+      - name: Apply the MV710G patch
+        working-directory: upstream
+        run: git apply --verbose ../traccar/mv710g.patch
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test the JT808 decoder and build
+        working-directory: upstream
+        run: ./gradlew test --tests org.traccar.protocol.Jt808ProtocolDecoderTest assemble
+
+      - name: Put the server program next to the Dockerfile
+        run: cp upstream/target/tracker-server.jar traccar/
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: traccar
+          platforms: linux/amd64,linux/arm64
+          build-args: TRACCAR_VERSION=${{ env.TRACCAR_VERSION }}
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ env.IMAGE }}:${{ env.TRACCAR_VERSION }}-mv710g
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/bornaradusin/CarTracker
+            org.opencontainers.image.description=Traccar ${{ env.TRACCAR_VERSION }} with MiCODUS MV710G command replies and alarm state
+            org.opencontainers.image.licenses=Apache-2.0

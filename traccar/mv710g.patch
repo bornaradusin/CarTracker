@@ -1,0 +1,52 @@
+diff --git a/src/main/java/org/traccar/protocol/Jt808ProtocolDecoder.java b/src/main/java/org/traccar/protocol/Jt808ProtocolDecoder.java
+index 78cd648..c4d2104 100644
+--- a/src/main/java/org/traccar/protocol/Jt808ProtocolDecoder.java
++++ b/src/main/java/org/traccar/protocol/Jt808ProtocolDecoder.java
+@@ -712,6 +712,9 @@ public class Jt808ProtocolDecoder extends BaseProtocolDecoder {
+         if ("G1C Pro".equals(model)) {
+             position.set(Position.KEY_MOTION, BitUtil.check(status, 4));
+         }
++        if ("MV710G".equals(model)) {
++            position.set(Position.KEY_ARMED, BitUtil.check(status, 6));
++        }
+         position.set(Position.KEY_BLOCKED, BitUtil.check(status, 10));
+         if ("MV810G".equals(model) || "MV710G".equals(model)) {
+             position.set(Position.KEY_DOOR, BitUtil.check(status, 16));
+@@ -1660,7 +1663,21 @@ public class Jt808ProtocolDecoder extends BaseProtocolDecoder {
+ 
+         int type = buf.readUnsignedByte();
+ 
+-        if (type == 0x40) {
++        if (type == 0x00 && buf.readableBytes() > 4 + 2
++                && buf.toString(buf.readerIndex(), 4, StandardCharsets.US_ASCII).equals("SMS,")) {
++
++            Position position = new Position(getProtocolName());
++            position.setDeviceId(deviceSession.getDeviceId());
++
++            getLastLocation(position, null);
++
++            buf.skipBytes(4); // "SMS," prefix of MiCODUS command replies
++            position.set(Position.KEY_RESULT,
++                    buf.readCharSequence(buf.readableBytes() - 2, StandardCharsets.US_ASCII).toString().trim());
++
++            return position;
++
++        } else if (type == 0x40) {
+ 
+             Position position = new Position(getProtocolName());
+             position.setDeviceId(deviceSession.getDeviceId());
+diff --git a/src/test/java/org/traccar/protocol/Jt808ProtocolDecoderTest.java b/src/test/java/org/traccar/protocol/Jt808ProtocolDecoderTest.java
+index 325b6c6..787b07e 100644
+--- a/src/test/java/org/traccar/protocol/Jt808ProtocolDecoderTest.java
++++ b/src/test/java/org/traccar/protocol/Jt808ProtocolDecoderTest.java
+@@ -99,6 +99,10 @@ public class Jt808ProtocolDecoderTest extends ProtocolTest {
+                 "7e070100150120764632790008000000114d442c53455420434f4e464947204f4b21187e"),
+                 position(Checks.ATTRIBUTES).attribute(Position.KEY_RESULT, "MD,SET CONFIG OK!"));
+ 
++        verifyDecode(decoder, binary(
++                "7e0900000a019176429553016200534d532c5346204f4b527e"),
++                position(Checks.ATTRIBUTES).attribute(Position.KEY_RESULT, "SF OK"));
++
+         verifyDecode(decoder, binary(
+                 "7e02000070012040000004019c00000000000004030158df9706c9606b002c000000ab250417170023010400000c5305030000003001153101158202008b530b0101cc00262600000ff1137730017e19f100384d08026e73e0003a4d08037e19e800000000047e3b950000000005409017000000000640a69600000000337e"),
+                 position().attribute("tire1Pressure", 1.4));
