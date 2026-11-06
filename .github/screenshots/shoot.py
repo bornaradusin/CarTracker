@@ -8,7 +8,6 @@ import os
 import re
 import subprocess
 import sys
-import threading
 import time
 import xml.etree.ElementTree as ET
 
@@ -106,10 +105,6 @@ def demo_status_bar():
 
 
 def main():
-    threading.Thread(
-        target=lambda: subprocess.run([sys.executable, os.path.join(HERE, "seed.py"), "http://localhost:8082", "http://localhost:5055", "keepalive"]),
-        daemon=True,
-    ).start()
 
     adb("install", "-r", "-g", APK)
     shell("pm", "grant", PACKAGE, "android.permission.POST_NOTIFICATIONS")
@@ -183,4 +178,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Keeps the demo car online while the screenshots are taken; stopped at the end so the step can finish
+    keepalive = subprocess.Popen(
+        [sys.executable, os.path.join(HERE, "seed.py"), "http://localhost:8082", "http://localhost:5055", "keepalive"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        main()
+    finally:
+        keepalive.kill()
