@@ -211,7 +211,8 @@ fun TrackerMap(
             is MapCamera.Center -> {
                 val position = CameraPosition.Builder()
                     .target(LatLng(c.latitude, c.longitude))
-                    .zoom(c.zoom ?: m.cameraPosition.zoom.coerceAtLeast(14.0))
+                    // Following the car keeps whatever zoom you've chosen
+                    .zoom(c.zoom ?: m.cameraPosition.zoom)
                     .padding(0.0, topPx.toDouble(), 0.0, bottomPx.toDouble())
                     .build()
                 m.animateCamera(CameraUpdateFactory.newCameraPosition(position), 600)

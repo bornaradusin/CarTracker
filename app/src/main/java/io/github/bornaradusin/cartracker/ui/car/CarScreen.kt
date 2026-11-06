@@ -1,5 +1,14 @@
 package io.github.bornaradusin.cartracker.ui.car
 
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.animation.core.Animatable
 import io.github.bornaradusin.cartracker.ui.map.CarPin
 import android.content.Context
 import android.content.Intent
@@ -98,13 +107,36 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
     var carMenu by remember { mutableStateOf(false) }
     var fuelDialog by remember { mutableStateOf(false) }
     val selectedId = car?.device?.id
-    val hasPosition = car?.position?.hasFix == true
+    val fix = car?.position?.takeIf { it.hasFix }
 
-    LaunchedEffect(selectedId, hasPosition) { if (hasPosition) cameraStamp++ }
+    // The card slides down to show more map: 0 = where it usually sits, up to [collapseRange] = only its top showing
+    val scope = rememberCoroutineScope()
+    val sheetOffset = remember { Animatable(0f) }
+    var collapsed by rememberSaveable { mutableStateOf(false) }
+    val peekPx = with(density) { 104.dp.toPx() }
+    val collapseRange = (sheetHeight - peekPx).coerceAtLeast(0f)
+    LaunchedEffect(collapseRange, collapsed) {
+        sheetOffset.updateBounds(0f, collapseRange)
+        sheetOffset.snapTo(if (collapsed) collapseRange else 0f)
+    }
+    fun settle(velocity: Float) {
+        scope.launch {
+            val down = when {
+                velocity > 800f -> true
+                velocity < -800f -> false
+                else -> sheetOffset.value > collapseRange / 2f
+            }
+            sheetOffset.animateTo(if (down) collapseRange else 0f, initialVelocity = velocity)
+            collapsed = down
+        }
+    }
+
+    // Keep the car in the middle of the map: on every new position, and when the card moves
+    LaunchedEffect(selectedId, fix?.latitude, fix?.longitude, collapsed) { if (fix != null) cameraStamp++ }
     LaunchedEffect(selectedId) { selectedId?.let { vm.loadCommandOptions(it) } }
 
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val sheetDp = with(density) { sheetHeight.toDp() }
+    val sheetDp = with(density) { (sheetHeight - sheetOffset.value).coerceAtLeast(0f).toDp() }
 
     Box(Modifier.fillMaxSize()) {
         TrackerMap(
@@ -206,9 +238,6 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
                     }
                 }
             }
-            MapButton(Ic.traffic, "Live traffic around the car, in Google Maps") {
-                p?.let { openUrl(context, "https://www.google.com/maps/@?api=1&map_action=map&center=${it.latitude},${it.longitude}&zoom=14&layer=traffic") }
-            }
             MapButton(Ic.streetView, "Street View of where the car is, in Google Maps") {
                 p?.let { openUrl(context, "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${it.latitude},${it.longitude}") }
             }
@@ -220,7 +249,13 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .onSizeChanged { sheetHeight = it.height },
+                .onSizeChanged { sheetHeight = it.height }
+                .offset { IntOffset(0, sheetOffset.value.roundToInt()) }
+                .draggable(
+                    orientation = Orientation.Vertical,
+                    state = rememberDraggableState { delta -> scope.launch { sheetOffset.snapTo(sheetOffset.value + delta) } },
+                    onDragStopped = { velocity -> settle(velocity) },
+                ),
         ) {
             val info = car
             if (info != null) {
