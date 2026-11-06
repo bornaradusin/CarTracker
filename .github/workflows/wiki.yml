@@ -1,0 +1,125 @@
+# Takes the wiki's screenshots and publishes the wiki.
+#
+# The screenshots come from the app itself, on an Android emulator, signed in to a throwaway
+# Traccar filled with a made-up car (.github/screenshots/seed.py), so no real car is ever shown.
+# The pages are the Markdown files in wiki/. Both go to the repo's GitHub wiki.
+#
+# Runs when the wiki or the screenshot scripts change, when a release is published, or by hand.
+# The wiki has to exist first: on GitHub, open the Wiki tab and save the first page once.
+name: Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "wiki/**"
+      - ".github/screenshots/**"
+      - ".github/workflows/wiki.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: true
+
+jobs:
+  wiki:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Android SDK
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKM=$(ls -d "$SDK"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1)
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          yes | "$SDKM" --sdk_root="$SDK" --licenses > /dev/null || true
+          "$SDKM" --sdk_root="$SDK" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build the app
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Throwaway Traccar with a made-up car
+        run: |
+          docker run -d --name traccar -p 8082:8082 -p 5055:5055 traccar/traccar:6.17.0
+          python3 .github/screenshots/seed.py http://localhost:8082 http://localhost:5055
+
+      - name: Let the emulator use KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Screenshots
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 4096M
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: python3 .github/screenshots/shoot.py app/build/outputs/apk/debug/app-debug.apk shots
+
+      - name: Smaller copies for the wiki
+        if: always()
+        run: |
+          pip install --quiet pillow
+          mkdir -p wiki-images
+          python3 -c "
+          import glob, os
+          from PIL import Image
+          for f in sorted(glob.glob('shots/*.png')):
+              im = Image.open(f).convert('RGB')
+              im = im.resize((540, round(im.height * 540 / im.width)), Image.LANCZOS)
+              im.save(os.path.join('wiki-images', os.path.basename(f)), optimize=True)
+              print(os.path.basename(f), im.size)
+          "
+
+      - name: Keep the screenshots with the run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: shots/
+          if-no-files-found: ignore
+
+      - name: Publish the wiki
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! git clone --depth 1 "https://x-access-token:$TOKEN@github.com/${{ github.repository }}.wiki.git" wiki-repo; then
+            echo "::error::The wiki doesn't exist yet. On GitHub, open the Wiki tab, save the first page once, then run this again."
+            exit 1
+          fi
+          find wiki-repo -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -r wiki/. wiki-repo/
+          mkdir -p wiki-repo/images
+          cp wiki-images/*.png wiki-repo/images/
+          cd wiki-repo
+          git config user.name "bornaradusin"
+          git config user.email "43745159+bornaradusin@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki already up to date"
+          else
+            git commit -q -m "Wiki for CarTracker $(sed -n 's/.*versionName = "\(.*\)".*/\1/p' ../app/build.gradle.kts | head -1)"
+            git push -q
+          fi
