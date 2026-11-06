@@ -10,7 +10,7 @@ import kotlinx.serialization.json.putJsonObject
  *
  * MiCODUS trackers (JT808, like the MV710G) take their SMS commands over the data connection when
  * Traccar sends them as a "custom" command in hex, so those are sent as the manual's text, hex-encoded.
- * Fuel cut and restore use Traccar's own engineStop / engineResume, which these trackers understand.
+ * Fuel cut and restore use RELAY too: Traccar's engineStop / engineResume never reach these trackers.
  * Any other tracker gets Traccar's standard commands, where its protocol supports them.
  */
 enum class TrackerKind { MICODUS, GENERIC }
@@ -64,8 +64,9 @@ object TrackerCommands {
     fun command(kind: TrackerKind, action: Action, deviceId: Long, types: Set<String>): JsonObject? {
         if (kind == TrackerKind.MICODUS) {
             val text = when (action) {
-                Action.CUT_NOW -> return typed(deviceId, "engineStop")
-                Action.RESTORE -> return typed(deviceId, "engineResume")
+                // Traccar's Engine stop/resume never reach MiCODUS trackers: they ignore that JT808 message
+                Action.CUT_NOW -> "RELAY,1#"
+                Action.RESTORE -> "RELAY,0#"
                 Action.CUT_SLOW -> "RELAY,2#"
                 Action.ARM -> "ARM#"
                 Action.DISARM -> "DISARM#"
