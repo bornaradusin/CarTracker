@@ -1,0 +1,100 @@
+# Builds CarTracker on every push. The APK is under the run's "Artifacts" (Actions tab → the run →
+# CarTracker-apk). A push to main also puts it on a draft release for the version in
+# app/build.gradle.kts (v1.0.0 and so on), to check and publish by hand. A published release is never
+# changed: raise versionName for the next one.
+#
+# Optional repository secrets (Settings → Secrets and variables → Actions):
+#   ANDROID_KEYSTORE_BASE64    your signing key, base64, so each APK installs over the last
+#   ANDROID_KEYSTORE_PASSWORD  its password
+#   ANDROID_KEY_ALIAS          its alias (cartracker if not set)
+#   ANDROID_KEY_PASSWORD       the key's password, if it differs from the keystore's
+name: Build
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Android SDK (the runner's own, or Google's command-line tools if it has none)
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKM=$(ls -d "$SDK"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1)
+          if [ -z "$SDKM" ]; then
+            SDK="$RUNNER_TEMP/android-sdk"
+            mkdir -p "$SDK/cmdline-tools"
+            curl -fsSL -o "$RUNNER_TEMP/tools.zip" https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+            unzip -q "$RUNNER_TEMP/tools.zip" -d "$SDK/cmdline-tools"
+            mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+            SDKM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          yes | "$SDKM" --sdk_root="$SDK" --licenses > /dev/null || true
+          "$SDKM" --sdk_root="$SDK" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Signing key (if the ANDROID_KEYSTORE_BASE64 secret is set)
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE" ]; then
+            printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/cartracker.jks"
+            echo "CARTRACKER_KEYSTORE=$RUNNER_TEMP/cartracker.jks" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build the APK
+        env:
+          CARTRACKER_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          CARTRACKER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          CARTRACKER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          VERSION=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts | head -1)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          if [ -n "$CARTRACKER_KEYSTORE" ]; then
+            ./gradlew --no-daemon assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk "CarTracker-$VERSION.apk"
+          else
+            echo "::warning::No signing key set: this is a debug build. Set ANDROID_KEYSTORE_BASE64 so updates install over it."
+            ./gradlew --no-daemon assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk "CarTracker-$VERSION-debug.apk"
+          fi
+          sha256sum CarTracker-*.apk | tee SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CarTracker-apk
+          path: |
+            CarTracker-*.apk
+            SHA256SUMS.txt
+
+      - name: Draft release for this version
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v$VERSION"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            if [ "$(gh release view "$TAG" --json isDraft -q .isDraft)" = "true" ]; then
+              gh release upload "$TAG" CarTracker-*.apk SHA256SUMS.txt --clobber
+            else
+              echo "::notice::$TAG is already published, so it was left alone. Raise versionName for a new draft."
+            fi
+          else
+            gh release create "$TAG" CarTracker-*.apk SHA256SUMS.txt --draft --target "$GITHUB_SHA" \
+              --title "CarTracker $VERSION" --notes "CarTracker $VERSION"
+          fi

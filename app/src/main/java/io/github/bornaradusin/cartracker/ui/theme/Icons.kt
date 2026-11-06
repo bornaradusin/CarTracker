@@ -1,0 +1,94 @@
+package io.github.bornaradusin.cartracker.ui.theme
+
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.unit.dp
+
+/** The line icons from the design, drawn from the same paths (24 × 24, 2 px stroke). */
+object Ic {
+
+    private fun circle(cx: Float, cy: Float, r: Float) =
+        "M${cx - r} ${cy}a$r $r 0 1 0 ${2 * r} 0a$r $r 0 1 0 ${-2 * r} 0"
+
+    private fun line(name: String, vararg paths: String): ImageVector =
+        ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
+            paths.forEach { d ->
+                addPath(
+                    pathData = addPathNodes(d),
+                    fill = null,
+                    stroke = SolidColor(Color.Black),
+                    strokeLineWidth = 2f,
+                    strokeLineCap = StrokeCap.Round,
+                    strokeLineJoin = StrokeJoin.Round,
+                )
+            }
+        }.build()
+
+    private fun solid(name: String, d: String): ImageVector =
+        ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(pathData = addPathNodes(d), fill = SolidColor(Color.Black))
+        }.build()
+
+    val car = line("car", "M5 16V12l2-5h10l2 5v4zM5 16v2M19 16v2")
+    val chevronDown = line("chevronDown", "M6 9l6 6 6-6")
+    val chevronRight = line("chevronRight", "M9 6l6 6-6 6")
+    val back = line("back", "M19 12H5M12 19l-7-7 7-7")
+    val bell = line("bell", "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9", "M10.3 21a1.94 1.94 0 0 0 3.4 0")
+    val crosshair = line("crosshair", circle(12f, 12f, 3f), "M12 2v3M12 19v3M2 12h3M19 12h3")
+    val layers = line("layers", "M12 2l10 5-10 5L2 7z", "M2 17l10 5 10-5M2 12l10 5 10-5")
+    val pin = line("pin", "M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12z", circle(12f, 9f, 2.5f))
+    val lock = line("lock", "M6 11h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z", "M8 11V7a4 4 0 0 1 8 0v4")
+    val unlock = line("unlock", "M6 11h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z", "M8 11V7a4 4 0 0 1 7.8-1.3")
+    val shieldCheck = line("shieldCheck", "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", "M9 12l2 2 4-4")
+    val navigation = line("navigation", "M3 11l19-9-9 19-2-8z")
+    val share = line("share", circle(18f, 5f, 3f), circle(6f, 12f, 3f), circle(18f, 19f, 3f), "M8.6 13.5l6.8 4M15.4 6.5l-6.8 4")
+    val route = line("route", circle(6f, 19f, 2f), circle(18f, 5f, 2f), "M8 19h8.5a3.5 3.5 0 0 0 0-7h-9a3.5 3.5 0 0 1 0-7H16")
+    val menu = line("menu", "M4 6h16M4 12h16M4 18h16")
+    val check = line("check", "M20 6L9 17l-5-5")
+    val plus = line("plus", "M12 5v14M5 12h14")
+    val minus = line("minus", "M5 12h14")
+    val close = line("close", "M6 6l12 12M18 6L6 18")
+    val traffic = line("traffic", "M10 2h4a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3h-4a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3z", "M12 7h.01M12 12h.01M12 17h.01")
+    val streetView = line("streetView", circle(12f, 5f, 2.5f), "M9 21v-6H7.5V11a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v4H15v6z")
+    val sliders = line("sliders", "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6")
+    val key = line("key", "M15 7a4 4 0 1 1-4 4M11 11L3 19M5 17l2 2M7 15l2 2")
+    val zap = line("zap", "M13 2L3 14h9l-1 8 10-12h-9z")
+    val power = line("power", "M12 2v10", "M18.4 6.6a9 9 0 1 1-12.8 0")
+    val home = line("home", "M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z")
+    val clock = line("clock", circle(12f, 12f, 10f), "M12 6v6l4 2")
+    val refresh = line("refresh", "M21 12a9 9 0 1 1-3-6.7L21 8", "M21 3v5h-5")
+    val trash = line("trash", "M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14")
+    val server = line("server", "M4 3h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M4 13h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2z", "M6 7h.01M6 17h.01")
+    val terminal = line("terminal", "M4 17l6-5-6-5M12 19h8")
+    val eyeOff = line("eyeOff", "M3 3l18 18", "M10.6 10.6a2 2 0 0 0 2.8 2.8", "M9.9 5.1A10 10 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.2 3.9M6.6 6.6A17 17 0 0 0 2 12s4 7 10 7a9.7 9.7 0 0 0 5.4-1.6")
+    val battery = line("battery", "M3 7h15a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z", "M23 11v2")
+    val warning = line("warning", "M12 3l10 18H2z", "M12 10v4M12 17h.01")
+    val play = solid("play", "M7 4l13 8-13 8z")
+    val pause = line("pause", "M8 5v14M16 5v14")
+
+    /** Vehicle icons for the map: name → path data (24 × 24). */
+    val vehiclePaths = linkedMapOf(
+        "Car" to "M5 16V12l2-5h10l2 5v4zM5 16v2M19 16v2",
+        "SUV" to "M3 16v-5l2-4h9l3 4h4v5zM6 16v2M18 16v2M14 7v4",
+        "Van" to "M2 16V7h13l4 4h3v5zM5 16v2M19 16v2M15 7v4h4",
+        "Pickup" to "M2 16v-4h7V8h6l3 4h4v4zM5 16v2M19 16v2",
+        "Motorbike" to "M2 16a3 3 0 1 0 6 0a3 3 0 1 0-6 0M16 16a3 3 0 1 0 6 0a3 3 0 1 0-6 0M5 16l4-6h5l5 6M13 10l-1-3h3",
+        "Truck" to "M2 6h12v10H2zM14 10h4l3 3v3h-7zM4 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M15 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0",
+    )
+
+    val vehicles: Map<String, ImageVector> = vehiclePaths.mapValues { (name, d) -> line(name, d) }
+
+    fun vehicle(name: String): ImageVector = vehicles[name] ?: vehicles.getValue("Car")
+
+    /** Traccar's device categories for each icon, so the choice also shows in Traccar's own apps. */
+    val categoryOf = mapOf(
+        "Car" to "car", "SUV" to "offroad", "Van" to "van", "Pickup" to "pickup", "Motorbike" to "motorcycle", "Truck" to "truck",
+    )
+
+    fun iconForCategory(category: String?): String =
+        categoryOf.entries.firstOrNull { it.value == category }?.key ?: "Car"
+}
