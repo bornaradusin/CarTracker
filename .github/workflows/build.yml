@@ -96,6 +96,10 @@ jobs:
           TAG="v$VERSION"
           if gh release view "$TAG" > /dev/null 2>&1; then
             if [ "$(gh release view "$TAG" --json isDraft -q .isDraft)" = "true" ]; then
+              # Drop files an earlier build of this version left behind (like a debug APK)
+              for old in $(gh release view "$TAG" --json assets -q '.assets[].name'); do
+                [ -f "$old" ] || gh release delete-asset "$TAG" "$old" --yes
+              done
               gh release upload "$TAG" CarTracker-*.apk SHA256SUMS.txt --clobber
             else
               echo "::notice::$TAG is already published, so it was left alone. Raise versionName for a new draft."
