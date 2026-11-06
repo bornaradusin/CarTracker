@@ -26,7 +26,7 @@ Tap **Stats** under the day's summary.
 - A bar for each day (a week or month) or each month (a year). Switch the bars between **Distance** and **Driving time**, and tap a bar for its numbers.
 - The **average per day** so far, and the **longest trip**.
 
-Finished months are kept on your phone, so a year opens quickly after the first time.
+Finished days are kept on your phone, so a month or a year opens quickly after the first time. Each day counts trips the same way as the Trips tab, from the ignition.
 
 <br clear="right">
 

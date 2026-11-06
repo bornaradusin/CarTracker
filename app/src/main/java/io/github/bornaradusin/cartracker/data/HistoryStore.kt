@@ -12,7 +12,6 @@ import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
-import java.time.YearMonth
 import java.time.ZoneId
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
@@ -76,33 +75,41 @@ class HistoryStore(private val api: TraccarApi, private val root: File) {
 
     // ---- trips ----
 
-    /** Trips in the range, a month at a time; finished months come from the phone. */
+    /**
+     * Trips in the range, a day at a time: Traccar works out trips properly (from the ignition, with
+     * top speeds) only for up to 24 hours at once. Finished days come from the phone.
+     */
     suspend fun trips(deviceId: Long, from: Instant, to: Instant): List<Trip> = coroutineScope {
         val end = minOf(to, Instant.now())
-        val months = generateSequence(YearMonth.from(from.atZone(zone))) { it.plusMonths(1) }
-            .takeWhile { !it.atDay(1).atStartOfDay(zone).toInstant().isAfter(end) }
-            .toList()
-        val gate = Semaphore(3)
-        months.map { month ->
-            async {
-                gate.withPermit {
-                    val monthStart = month.atDay(1).atStartOfDay(zone).toInstant()
-                    val monthEnd = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant()
-                    val segFrom = maxOf(from, monthStart)
-                    val segTo = minOf(end, monthEnd)
-                    if (!segFrom.isBefore(segTo)) emptyList<Trip>()
-                    else if (segFrom == monthStart && segTo == monthEnd && finished(monthEnd)) monthTrips(deviceId, month, monthStart, monthEnd)
-                    else api.trips(deviceId, segFrom, segTo)
-                }
-            }
-        }.awaitAll().flatten().sortedBy { it.startTime }
+        val first = from.atZone(zone).toLocalDate()
+        val last = end.atZone(zone).toLocalDate()
+        val days = generateSequence(first) { it.plusDays(1) }.takeWhile { !it.isAfter(last) }.toList()
+        val gate = Semaphore(4)
+        days.map { day -> async { gate.withPermit { dayTrips(deviceId, day) } } }
+            .awaitAll()
+            .flatten()
+            .filter { t -> Format.parse(t.startTime)?.let { !it.isBefore(from) && it.isBefore(to) } ?: false }
+            .sortedBy { it.startTime }
     }
 
-    private suspend fun monthTrips(deviceId: Long, month: YearMonth, start: Instant, end: Instant): List<Trip> {
-        val file = File(dir("trips", deviceId), "$month.json")
-        read(file)?.let { text -> runCatching { AppJson.decodeFromString(ListSerializer(Trip.serializer()), text) }.getOrNull()?.let { return it } }
-        val trips = api.trips(deviceId, start, end)
-        write(file, AppJson.encodeToString(ListSerializer(Trip.serializer()), trips))
+    private suspend fun dayTrips(deviceId: Long, day: LocalDate): List<Trip> {
+        val start = day.atStartOfDay(zone).toInstant()
+        val end = day.plusDays(1).atStartOfDay(zone).toInstant()
+        if (!start.isBefore(Instant.now())) return emptyList()
+        val file = File(dir("trips", deviceId), "$day.json")
+        val complete = finished(end)
+        if (complete) {
+            read(file)?.let { text -> runCatching { AppJson.decodeFromString(ListSerializer(Trip.serializer()), text) }.getOrNull()?.let { return it } }
+        }
+        val until = minOf(end, Instant.now())
+        // The day the clocks go back has 25 hours: ask in two halves to stay within 24
+        val trips = if (until.epochSecond - start.epochSecond > 86_400) {
+            val middle = start.plusSeconds(12 * 3_600)
+            api.trips(deviceId, start, middle) + api.trips(deviceId, middle, until)
+        } else {
+            api.trips(deviceId, start, until)
+        }
+        if (complete) write(file, AppJson.encodeToString(ListSerializer(Trip.serializer()), trips))
         return trips
     }
 
