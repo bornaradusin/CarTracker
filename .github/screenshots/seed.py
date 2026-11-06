@@ -76,6 +76,8 @@ def send(point, at, speed_kmh=0.0, bearing=0.0, ignition=False, **extra):
     }
     params.update({k: str(v).lower() if isinstance(v, bool) else str(v) for k, v in extra.items()})
     urllib.request.urlopen(OSMAND + "/?" + urllib.parse.urlencode(params), timeout=10).read()
+    # Traccar answers before it has finished with a position; give it time so they're handled in order
+    time.sleep(0.15)
 
 
 def metres(a, b):
