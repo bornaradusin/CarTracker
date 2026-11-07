@@ -101,7 +101,9 @@ class HistoryStore(private val api: TraccarApi, private val root: File) {
             .awaitAll()
             .flatten()
             .sortedBy { it.startTime }
-        joinAtMidnight(trips).filter { t -> Format.parse(t.startTime)?.let { !it.isBefore(from) && it.isBefore(to) } ?: false }
+        joinAtMidnight(trips)
+            .filter { it.isDrive }
+            .filter { t -> Format.parse(t.startTime)?.let { !it.isBefore(from) && it.isBefore(to) } ?: false }
     }
 
     /** A drive across midnight comes back as two trips, one per day: joined into one again. */

@@ -186,3 +186,9 @@ fun JsonObject.bool(key: String): Boolean? =
 
 fun JsonObject.num(key: String): Double? =
     (this[key] as? JsonPrimitive)?.let { it.doubleOrNull ?: it.contentOrNull?.toDoubleOrNull() }
+
+/**
+ * A real drive, not the engine running while the car stood still (idling, waiting in a car park):
+ * Traccar counts those as trips when trips follow the ignition.
+ */
+val Trip.isDrive: Boolean get() = distance >= 300
