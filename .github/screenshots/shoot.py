@@ -269,3 +269,11 @@ if __name__ == "__main__":
         raise
     finally:
         keepalive.kill()
+        # Any crash of the app during the run, with its stack trace
+        try:
+            crashes = adb("logcat", "-d", "-b", "crash", check=False).decode(errors="replace").strip()
+            print("app crashes during the run:" if crashes else "no app crashes during the run")
+            if crashes:
+                print(crashes)
+        except Exception as e:
+            print("couldn't read the crash log:", e)
