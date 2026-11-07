@@ -162,6 +162,11 @@ class CommandCenter(
         _options.value = emptyMap()
     }
 
+    /** Waits until the last command sent to this car has its answer, or stops waiting for one. */
+    suspend fun awaitIdle(deviceId: Long) {
+        watchers[deviceId]?.join()
+    }
+
     fun dismissReply() {
         _reply.value = null
     }

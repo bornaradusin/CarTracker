@@ -175,7 +175,9 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 SpeedStepper(info.prefs.speedLimit) { vm.setSpeedLimit(info, it) }
             }
             ToggleRow(
-                AlertKind.VIBRATION.title, hintFor(AlertKind.VIBRATION.key, AlertKind.VIBRATION.hint),
+                AlertKind.VIBRATION.title,
+                // MiCODUS trackers only watch for vibration while the alarm is armed and the car is still
+                hintFor(AlertKind.VIBRATION.key, if (micodus) "Bumps, knocks or towing while the alarm is on" else AlertKind.VIBRATION.hint),
                 checked = AlertKind.VIBRATION.key in settings.alertKinds,
                 onChange = { vm.setAlertKind(AlertKind.VIBRATION, it, info) },
                 enabled = !micodus || pending == null,
@@ -367,7 +369,14 @@ private fun StepButton(label: String, icon: androidx.compose.ui.graphics.vector.
 }
 
 /** A command that can sit with the main controls or under Advanced commands. */
-private data class QuickCommand(val key: String, val title: String, val hint: String?, val run: () -> Unit)
+private data class QuickCommand(
+    val key: String,
+    val title: String,
+    val hint: String?,
+    /** Asked before sending, for commands that are hard to undo. */
+    val warning: String? = null,
+    val run: () -> Unit,
+)
 
 /** Every command this tracker can be sent from the Tracker card: the app's own, the server's saved ones and Traccar's. */
 private fun trackerCommands(
@@ -379,11 +388,20 @@ private fun trackerCommands(
     onRate: () -> Unit,
     onConfirm: (Action) -> Unit,
 ): List<QuickCommand> = buildList {
+    val micodus = info.kind == TrackerKind.MICODUS
     if (TrackerCommands.supports(info.kind, Action.LOCATE, types)) {
-        add(QuickCommand("locate", "Locate now", "Asks the tracker for a fresh position") { vm.send(info, Action.LOCATE) })
+        // MiCODUS answers WHERE# with its position in words; other trackers send a new position
+        val hint = if (micodus) "Asks the tracker where it is right now" else "Asks the tracker for a fresh position"
+        add(QuickCommand("locate", "Locate now", hint) { vm.send(info, Action.LOCATE) })
     }
-    if (info.kind == TrackerKind.MICODUS || "positionPeriodic" in types) add(QuickCommand("rate", "Update rate", "How often it reports", onRate))
+    if (info.kind == TrackerKind.MICODUS || "positionPeriodic" in types) add(QuickCommand("rate", "Update rate", "How often it reports", run = onRate))
     if (TrackerCommands.supports(info.kind, Action.RESTART, types)) add(QuickCommand("restart", "Restart tracker", null) { onConfirm(Action.RESTART) })
+    if (micodus) {
+        add(QuickCommand("sync", "Send all settings to the tracker", "Makes the tracker match every switch here, one command at a time") { vm.sendAllSettings(info) })
+        add(QuickCommand("status", "Tracker status", "Battery, signal, GPS, ignition, fuel and alarm, in the tracker's words") { vm.send(info, Action.CHECK_STATUS) })
+        add(QuickCommand("alarms", "Tracker alarm settings", "What each of the tracker's alarms is set to") { vm.send(info, Action.CHECK_ALARMS) })
+        add(QuickCommand("settings", "Tracker settings", "Server, update rate and the rest of its setup") { vm.send(info, Action.CHECK_SETTINGS) })
+    }
     saved.forEach { cmd ->
         val name = cmd.description?.takeIf { it.isNotBlank() } ?: TrackerCommands.typeName(cmd.type)
         add(
@@ -398,9 +416,13 @@ private fun trackerCommands(
             },
         )
     }
-    types.filter { it != "custom" }.sorted().forEach { type ->
+    TrackerCommands.listableTypes(info.kind, types).forEach { type ->
         val name = TrackerCommands.typeName(type)
-        add(QuickCommand("type:$type", name, "Supported by this tracker") { vm.sendAdvanced(info, name, TrackerCommands.typed(info.device.id, type)) })
+        add(
+            QuickCommand("type:$type", name, "Traccar command", TrackerCommands.typeWarning(type)) {
+                vm.sendAdvanced(info, name, TrackerCommands.typed(info.device.id, type))
+            },
+        )
     }
 }
 
@@ -411,7 +433,8 @@ private fun trackerCommands(
 @Composable
 private fun CommandRow(cmd: QuickCommand, divider: Boolean, main: Boolean, editable: Boolean, onMove: () -> Unit) {
     val c = LocalAppColors.current
-    SettingRow(cmd.title, cmd.hint, divider, onClick = cmd.run) {
+    var asking by remember { mutableStateOf(false) }
+    SettingRow(cmd.title, cmd.hint, divider, onClick = { if (cmd.warning != null) asking = true else cmd.run() }) {
         if (editable) {
             IconButton(onClick = onMove, modifier = Modifier.size(40.dp)) {
                 Icon(
@@ -423,6 +446,21 @@ private fun CommandRow(cmd: QuickCommand, divider: Boolean, main: Boolean, edita
             }
         }
         Icon(Ic.chevronRight, null, tint = c.muted, modifier = Modifier.size(18.dp))
+    }
+    if (asking && cmd.warning != null) {
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            containerColor = c.surface,
+            title = { Text("${cmd.title}?", color = c.ink) },
+            text = { Text(cmd.warning, color = c.ink2) },
+            confirmButton = {
+                TextButton(onClick = {
+                    asking = false
+                    cmd.run()
+                }) { Text(cmd.title, color = c.warnText, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { TextButton(onClick = { asking = false }) { Text("Cancel", color = c.ink2) } },
+        )
     }
 }
 
@@ -473,7 +511,7 @@ private fun AdvancedCommands(vm: AppViewModel, info: CarInfo, commands: List<Qui
                 BigButton("Send", enabled = text.isNotBlank()) { vm.customCommand(info, text) }
             }
             Text(
-                "The star keeps the command as a button with the main controls.",
+                "The tracker's answer shows in the Alerts list. The star keeps the command as a button with the main controls.",
                 style = MaterialTheme.typography.bodySmall,
                 color = c.muted,
                 modifier = Modifier.padding(bottom = 8.dp),

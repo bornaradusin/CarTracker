@@ -33,6 +33,9 @@ enum class Action(val label: String) {
     SPEEDING_OFF("Speeding alert off"),
     IGNITION_ON("Ignition alert on"),
     IGNITION_OFF("Ignition alert off"),
+    CHECK_STATUS("Tracker status"),
+    CHECK_SETTINGS("Tracker settings"),
+    CHECK_ALARMS("Tracker alarm settings"),
     LOCATE("Locate now"),
     RESTART("Restart tracker"),
 }
@@ -107,6 +110,10 @@ object TrackerCommands {
                 // 2: both when the ignition goes on and when it goes off
                 Action.IGNITION_ON -> "ACCALM,ON,2,0#"
                 Action.IGNITION_OFF -> "ACCALM,OFF#"
+                // Questions: the tracker answers in text, shown in a dialog and in the Alerts list
+                Action.CHECK_STATUS -> "STATUS#"
+                Action.CHECK_SETTINGS -> "PARAM#"
+                Action.CHECK_ALARMS -> "ALARM#"
                 Action.LOCATE -> "WHERE#"
                 Action.RESTART -> "RESTART#"
             }
@@ -122,6 +129,33 @@ object TrackerCommands {
             else -> return null
         }
         return if (type in types) typed(deviceId, type) else null
+    }
+
+    /**
+     * Traccar's commands that can be sent from a list: they need nothing but their type (the others
+     * need values, like a server address, and fail or send garbage without them), leaving out the
+     * ones the app's own buttons already send. For MiCODUS
+     * trackers only the ones that work and are safe: Traccar's engine stop / resume and arm / disarm
+     * are ignored (the app's own buttons send RELAY and ARM#), its restart duplicates Restart tracker,
+     * and factory reset or power off leave the tracker unreachable except by SMS.
+     */
+    fun listableTypes(kind: TrackerKind, types: Set<String>): List<String> {
+        val allowed = if (kind == TrackerKind.MICODUS) micodusTypes else plainTypes
+        return types.filter { it in allowed }.sorted()
+    }
+
+    // Locate once, restart, engine stop / resume and arm / disarm are the app's own buttons for these trackers
+    private val plainTypes = setOf(
+        "positionStop", "deviceIdentification", "alarmDismiss", "requestPhoto", "powerOff",
+        "factoryReset", "configuration", "getVersion", "getModemStatus", "getDeviceStatus",
+    )
+    private val micodusTypes = setOf("positionSingle", "alarmDismiss")
+
+    /** Why a Traccar command needs a second tap, or null when it doesn't. */
+    fun typeWarning(type: String): String? = when (type) {
+        "powerOff" -> "The tracker turns off and stops reporting until it's powered on again by hand."
+        "factoryReset" -> "Every setting on the tracker is wiped, including the server address, so it may stop reporting here."
+        else -> null
     }
 
     fun updateRate(kind: TrackerKind, rate: UpdateRate, deviceId: Long, types: Set<String>): JsonObject? = when (kind) {
@@ -261,7 +295,15 @@ object TrackerCommands {
         "engineResume" -> "Engine resume"
         "alarmArm" -> "Arm alarm"
         "alarmDisarm" -> "Disarm alarm"
-        "positionSingle" -> "Locate once"
+        "positionSingle" -> "Locate once (position on the map)"
+        "alarmDismiss" -> "Clear the tracker's alarm"
+        "deviceIdentification" -> "Identify tracker"
+        "configuration" -> "Read settings"
+        "getVersion" -> "Firmware version"
+        "getModemStatus" -> "Modem status"
+        "getDeviceStatus" -> "Tracker status"
+        "factoryReset" -> "Factory reset"
+        "powerOff" -> "Turn tracker off"
         "positionPeriodic" -> "Report periodically"
         "positionStop" -> "Stop reporting"
         "rebootDevice" -> "Restart tracker"

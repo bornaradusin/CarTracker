@@ -497,6 +497,50 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private val speedSends = mutableMapOf<Long, Job>()
+    private val settingSyncs = mutableMapOf<Long, Job>()
+
+    /**
+     * Sends a MiCODUS tracker every setting the app shows (its alerts, speed limit, low battery voltage
+     * and arming automatically), one at a time, each once the last has its answer. Out of the box the
+     * tracker has its own (some text or call the SIM's owner), so this makes it do what the switches say.
+     */
+    fun sendAllSettings(car: CarInfo) {
+        if (car.kind != TrackerKind.MICODUS) return
+        if (settingSyncs[car.device.id]?.isActive == true) {
+            say("Still sending settings to ${car.device.name}. Their answers show in Alerts.")
+            return
+        }
+        if (!car.device.online) {
+            say("${car.device.name} is offline, so nothing was sent. Try again once it's back online.")
+            return
+        }
+        val s = settings.value
+        val p = car.prefs
+        fun on(kind: AlertKind) = kind.key in s.alertKinds
+        val steps = listOf(
+            if (on(AlertKind.VIBRATION)) Action.VIBRATION_ON else Action.VIBRATION_OFF,
+            if (on(AlertKind.LOW_BATTERY)) Action.LOW_BATTERY_ON else Action.LOW_BATTERY_OFF,
+            if (on(AlertKind.UNPLUGGED)) Action.UNPLUGGED_ON else Action.UNPLUGGED_OFF,
+            if (on(AlertKind.SPEEDING) && p.speedLimit > 0) Action.SPEEDING_ON else Action.SPEEDING_OFF,
+            if (on(AlertKind.IGNITION)) Action.IGNITION_ON else Action.IGNITION_OFF,
+            if (p.autoArm) Action.AUTO_ARM_ON else Action.AUTO_ARM_OFF,
+        )
+        say("Sending ${steps.size} settings to ${car.device.name}, one at a time. Their answers show in Alerts.")
+        settingSyncs[car.device.id] = viewModelScope.launch {
+            for (action in steps) {
+                c.commands.awaitIdle(car.device.id)
+                // Settings can't be confirmed while it's offline, so the rest wait for another go
+                val now = cars.value.firstOrNull { it.device.id == car.device.id } ?: return@launch
+                if (!now.device.online) {
+                    say("${car.device.name} went offline, so the rest of its settings weren't sent. Try again once it's back.")
+                    return@launch
+                }
+                send(now, action, quiet = true, speedKmh = p.speedLimit, lowVolts = p.trackerLowVolts).join()
+            }
+            c.commands.awaitIdle(car.device.id)
+            say("Finished sending settings to ${car.device.name}. Alerts shows what it confirmed.")
+        }
+    }
     private val voltSends = mutableMapOf<Long, Job>()
 
     /**
