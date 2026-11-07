@@ -457,7 +457,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         quiet: Boolean = false,
         speedKmh: Int = TrackerCommands.DEFAULT_SPEED_KMH,
         lowVolts: Double = car.prefs.trackerLowVolts,
-    ) = c.commands.send(target(car), action, quiet, speedKmh, lowVolts, car.prefs.voltOffset)
+        auto: Boolean = false,
+    ) = c.commands.send(target(car), action, quiet, speedKmh, lowVolts, car.prefs.voltOffset, auto)
 
     fun setUpdateRate(car: CarInfo, rate: UpdateRate) = c.commands.setUpdateRate(target(car), rate)
 
@@ -492,7 +493,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         // A MiCODUS tracker is told too, so it reports the change at once and only to the server
         // (out of the box it also texts the SIM's owner).
         if (car != null && micodus && kind == AlertKind.IGNITION) {
-            send(car, if (on) Action.IGNITION_ON else Action.IGNITION_OFF, quiet = true)
+            send(car, if (on) Action.IGNITION_ON else Action.IGNITION_OFF, quiet = true, auto = true)
         }
     }
 
@@ -554,7 +555,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         voltSends.remove(car.device.id)?.cancel()
         voltSends[car.device.id] = viewModelScope.launch {
             delay(1_500)
-            send(car, Action.LOW_BATTERY_ON, lowVolts = v)
+            send(car, Action.LOW_BATTERY_ON, lowVolts = v, auto = true)
         }
     }
 
@@ -571,7 +572,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             speedSends.remove(car.device.id)?.cancel()
             speedSends[car.device.id] = viewModelScope.launch {
                 delay(1_500)
-                if (kmh > 0) send(car, Action.SPEEDING_ON, quiet = true, speedKmh = kmh) else send(car, Action.SPEEDING_OFF, quiet = true)
+                if (kmh > 0) send(car, Action.SPEEDING_ON, quiet = true, speedKmh = kmh, auto = true)
+                else send(car, Action.SPEEDING_OFF, quiet = true, auto = true)
             }
         }
     }
@@ -931,7 +933,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         voltSends.remove(car.device.id)?.cancel()
         voltSends[car.device.id] = viewModelScope.launch {
             delay(1_500)
-            send(updated, Action.LOW_BATTERY_ON, quiet = true)
+            send(updated, Action.LOW_BATTERY_ON, quiet = true, auto = true)
         }
     }
 

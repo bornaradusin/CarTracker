@@ -80,6 +80,9 @@ class CommandCenter(
         return CommandOptions(types, saved, true).also { o -> _options.update { it + (deviceId to o) } }
     }
 
+    /** Cars whose account refused a command that isn't saved on the server (Limit commands). */
+    private val limited = mutableSetOf<Long>()
+
     suspend fun optionsFor(deviceId: Long): CommandOptions =
         _options.value[deviceId]?.takeIf { it.loaded } ?: load(deviceId)
 
@@ -95,13 +98,21 @@ class CommandCenter(
         speedKmh: Int = TrackerCommands.DEFAULT_SPEED_KMH,
         lowVolts: Double = TrackerCommands.DEFAULT_LOW_VOLTS,
         voltOffset: Double = 0.0,
+        auto: Boolean = false,
     ): Job = scope.launch {
-        val o = optionsFor(target.id)
+        var o = optionsFor(target.id)
         // The tracker compares its own reading, so it gets the threshold less the car's correction
         val command = TrackerCommands.command(target.kind, action, target.id, o.types, speedKmh, lowVolts - voltOffset)
         if (command == null) {
             say("${target.name}'s tracker can't do that.")
             return@launch
+        }
+        // Sent by the app itself (a new speed limit or voltage): on an account limited to saved
+        // commands that has already refused one, only a saved command is tried, so moving a slider
+        // doesn't leave a "Not sent" for every step. The saved list is reloaded in case it was added since.
+        if (auto && target.id in limited) {
+            o = load(target.id)
+            if (TrackerCommands.preferSaved(command, o.saved, target.id) == command) return@launch
         }
         val change = when (action) {
             Action.CUT_NOW, Action.RESTORE -> PendingChange(PendingChange.FUEL, action == Action.CUT_NOW)
@@ -246,6 +257,7 @@ class CommandCenter(
                 } ?: "Your account isn't allowed to send that. Ask the server's admin, or add it as a saved command."
                 else -> e.message ?: "Couldn't send that."
             }
+            if (e.code == 400 || e.code == 403) limited += target.id
             log.update(entry) { it.copy(state = CommandEntry.NOT_SENT, problem = problem) }
             say(problem)
             false
