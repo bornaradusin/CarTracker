@@ -22,6 +22,6 @@ The app warns you itself when the battery runs low, with no setting needed on th
 
 Turn it off, or change the level from 11.0 to 12.4 V, under **Low battery warning** on this screen. Each car has its own level. The **Battery** tile on the car card turns orange below the same level.
 
-This is separate from the tracker's own **Low car battery** alarm under [Controls](Controls), which the tracker raises below 11.5 V.
+This is separate from the tracker's own **Low car battery** alarm under [Controls](Controls), which the tracker raises below the voltage you set there (11.5 V at first).
 
 Past days are kept on your phone once loaded, so the 7-day view opens quickly the second time.
