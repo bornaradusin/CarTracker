@@ -237,7 +237,13 @@ class CommandCenter(
             true
         } catch (e: ApiException) {
             val problem = when (e.code) {
-                400, 403 -> "Your account isn't allowed to send that. Ask the server's admin, or add it as a saved command."
+                // An account limited to saved commands: say exactly which one to save, since the
+                // alerts' values (voltage, speed limit) each need their own
+                400, 403 -> TrackerCommands.customText(command)?.let { text ->
+                    "Your account can only send commands saved on the server, and $text isn't one. " +
+                        "Save it there as a Custom command with the data ${TrackerCommands.hex(text)}, linked to your account and this car, " +
+                        "then send it again from Alerts."
+                } ?: "Your account isn't allowed to send that. Ask the server's admin, or add it as a saved command."
                 else -> e.message ?: "Couldn't send that."
             }
             log.update(entry) { it.copy(state = CommandEntry.NOT_SENT, problem = problem) }

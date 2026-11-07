@@ -286,6 +286,14 @@ object TrackerCommands {
         Regex("\\b(error|fail|failed|failure|invalid|wrong|not support(ed)?|unknown)\\b", RegexOption.IGNORE_CASE)
             .containsMatchIn(reply)
 
+    /** The text a custom command sends (as typed or texted to the tracker), or null for other commands. */
+    fun customText(command: JsonObject): String? {
+        if (command.str("type") != "custom") return null
+        val data = (command["attributes"] as? JsonObject)?.str("data") ?: return null
+        if (data.length % 2 != 0 || !data.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) return data
+        return runCatching { String(data.chunked(2).map { it.toInt(16).toByte() }.toByteArray(), Charsets.US_ASCII) }.getOrNull()
+    }
+
     fun hex(text: String): String = text.toByteArray(Charsets.US_ASCII).joinToString("") { "%02x".format(it) }
 
     /** Readable names for Traccar's command types, for the advanced list. */
