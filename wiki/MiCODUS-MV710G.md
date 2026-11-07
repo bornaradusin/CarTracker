@@ -59,7 +59,7 @@ For everyday accounts with **Limit commands** (see [Your Traccar server](Traccar
 
 The `0` at the end of the alert commands means "report to the server only", so the tracker never sends SMS that cost you money. In `ACCALM`, the `2` means both when the ignition goes on and when it goes off.
 
-Saved commands match the app's buttons exactly, so for the low battery and speeding alerts save one for each value you use.
+Saved commands match the app's buttons exactly, so for the low battery and speeding alerts save one for each value you use. If one is missing, the command shows as **Not sent** in Alerts, with its text and the hex to save it with; once it's saved, tap it and choose **Send again**. Moving the speed limit, voltage or reading correction only tries values that are saved, so a slider doesn't leave a **Not sent** for every step.
 
 ### Commands to avoid
 
