@@ -88,7 +88,7 @@ fun BatteryScreen(vm: AppViewModel, onBack: () -> Unit) {
             Text("No car selected.", color = c.muted)
             return@Column
         }
-        val volts = info.position?.power?.takeIf { it > 1.0 }
+        val volts = info.prefs.volts(info.position?.power)
         val limit = info.prefs.lowVoltage
         val warnAt = limit.takeIf { it > 0 } ?: 11.8
 
@@ -126,7 +126,12 @@ fun BatteryScreen(vm: AppViewModel, onBack: () -> Unit) {
                     }
                 }
             }
-            val points = if (state.deviceId == deviceId && state.hours == hours) state.points else emptyList()
+            // Stored as the tracker read them; corrected here, so changing the correction redraws the history too
+            val offset = info.prefs.voltOffset.toFloat()
+            val points = remember(state, deviceId, hours, offset) {
+                val raw = if (state.deviceId == deviceId && state.hours == hours) state.points else emptyList()
+                if (offset == 0f) raw else raw.map { it.copy(volts = it.volts + offset) }
+            }
             val to = remember(points) { Instant.now() }
             val from = to.minusSeconds(hours * 3_600L)
             Box(Modifier.fillMaxWidth().padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
@@ -179,6 +184,36 @@ fun BatteryScreen(vm: AppViewModel, onBack: () -> Unit) {
             Text(
                 "The app checks the tracker's readings while the car is parked and sends one alert, then waits until the battery recovers. " +
                     "A healthy 12 V battery reads about 12.4 to 12.7 V parked, and 13.8 to 14.4 V with the engine running.",
+                style = MaterialTheme.typography.bodySmall,
+                color = c.muted,
+                modifier = Modifier.padding(top = 6.dp, bottom = 10.dp),
+            )
+        }
+
+        // ---- correction
+        SectionCard("Reading correction") {
+            val saved = info.prefs.voltOffset.toFloat()
+            var offset by remember(saved) { mutableFloatStateOf(saved) }
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Add to every reading", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = c.ink)
+                Text(
+                    String.format(Locale.US, "%+.1f V", offset).replace("-0.0", "0.0").replace("+0.0", "0.0"),
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = c.accentText,
+                )
+            }
+            Slider(
+                value = offset,
+                onValueChange = { offset = (it * 10).roundToInt() / 10f },
+                onValueChangeFinished = { vm.setVoltOffset(info, (offset * 10).roundToInt() / 10.0) },
+                valueRange = -1f..1f,
+                steps = 19,
+                colors = SliderDefaults.colors(thumbColor = c.accentOutline, activeTrackColor = c.accentOutline, inactiveTrackColor = c.line),
+                modifier = Modifier.semantics { contentDescription = "Reading correction" },
+            )
+            Text(
+                "If the tracker reads a little low or high, measure the battery with a multimeter and add the difference here. " +
+                    "It changes every reading in the app, the warning and the tracker's own low battery alert.",
                 style = MaterialTheme.typography.bodySmall,
                 color = c.muted,
                 modifier = Modifier.padding(top = 6.dp, bottom = 10.dp),

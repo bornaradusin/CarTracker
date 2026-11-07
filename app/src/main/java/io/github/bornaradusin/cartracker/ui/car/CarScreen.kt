@@ -436,7 +436,7 @@ private fun CarCard(
                 )
             }
             StatTile("Today", info.todayMeters?.let { Format.distance(it) } ?: "–", Modifier.weight(1f))
-            val volts = info.position?.power
+            val volts = info.prefs.volts(info.position?.power)
             val low = info.prefs.lowVoltage.takeIf { it > 0 } ?: 11.8
             StatTile(
                 "Battery",

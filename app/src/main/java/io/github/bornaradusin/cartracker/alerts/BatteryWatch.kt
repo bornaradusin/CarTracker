@@ -23,7 +23,7 @@ class BatteryWatch(private val context: Context, private val settings: SettingsS
         positions.forEach { p ->
             val prefs = s.prefs(p.deviceId)
             val limit = prefs.lowVoltage
-            val volts = p.power ?: return@forEach
+            val volts = prefs.volts(p.power) ?: return@forEach
             if (limit <= 0.0 || volts < 1.0) return@forEach
             if (prefs.batteryWarned) {
                 if (volts >= limit + RECOVERED) settings.updateDevice(p.deviceId) { it.copy(batteryWarned = false) }

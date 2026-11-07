@@ -457,7 +457,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         quiet: Boolean = false,
         speedKmh: Int = TrackerCommands.DEFAULT_SPEED_KMH,
         lowVolts: Double = car.prefs.trackerLowVolts,
-    ) = c.commands.send(target(car), action, quiet, speedKmh, lowVolts)
+    ) = c.commands.send(target(car), action, quiet, speedKmh, lowVolts, car.prefs.voltOffset)
 
     fun setUpdateRate(car: CarInfo, rate: UpdateRate) = c.commands.setUpdateRate(target(car), rate)
 
@@ -916,6 +916,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** The app's low-battery warning level for the car, in volts; 0 turns it off. */
     fun setLowVoltage(car: CarInfo, volts: Double) = viewModelScope.launch {
         c.settings.updateDevice(car.device.id) { it.copy(lowVoltage = volts, batteryWarned = false) }
+    }
+
+    /**
+     * Corrects a tracker that reads the battery a little low or high. A MiCODUS tracker with its low
+     * battery alert on is sent its threshold again, since it compares its own (uncorrected) reading.
+     */
+    fun setVoltOffset(car: CarInfo, offset: Double) = viewModelScope.launch {
+        val v = Math.round(offset.coerceIn(-1.0, 1.0) * 10) / 10.0
+        if (v == car.prefs.voltOffset) return@launch
+        c.settings.updateDevice(car.device.id) { it.copy(voltOffset = v, batteryWarned = false) }
+        if (car.kind != TrackerKind.MICODUS || AlertKind.LOW_BATTERY.key !in settings.value.alertKinds) return@launch
+        val updated = car.copy(prefs = car.prefs.copy(voltOffset = v))
+        voltSends.remove(car.device.id)?.cancel()
+        voltSends[car.device.id] = viewModelScope.launch {
+            delay(1_500)
+            send(updated, Action.LOW_BATTERY_ON, quiet = true)
+        }
     }
 
     // ---------- stats ----------

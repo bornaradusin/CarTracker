@@ -112,7 +112,7 @@ object CarWidget {
             p != null -> "Parked"
             else -> null
         }
-        val volts = p?.power?.takeIf { it > 1.0 }
+        val volts = prefs.volts(p?.power)
         val limit = prefs.lowVoltage.takeIf { it > 0 } ?: 11.8
         val pin = MarkerFactory.bitmap(
             context,

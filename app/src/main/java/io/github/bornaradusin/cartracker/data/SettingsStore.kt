@@ -53,8 +53,13 @@ data class DevicePrefs(
      * Null until someone changes it, which means [defaultMainCommands].
      */
     val mainCommands: List<String>? = null,
+    /** Added to every battery reading, for a tracker that reads a little low (+) or high (−). */
+    val voltOffset: Double = 0.0,
 ) {
     val shownCommands: List<String> get() = mainCommands ?: defaultMainCommands
+
+    /** The car battery's real voltage from the tracker's [raw] reading, or null when there's none. */
+    fun volts(raw: Double?): Double? = raw?.takeIf { it > 1.0 }?.let { it + voltOffset }
 
     companion object {
         val defaultMainCommands = listOf("locate", "rate", "restart")

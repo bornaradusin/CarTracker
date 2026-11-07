@@ -166,6 +166,11 @@ fun TrackerMap(
     LaunchedEffect(map, style, dark) {
         val m = map ?: return@LaunchedEffect
         loaded = null
+        // The blue dot keeps animating on the old style and crashes MapLibre once the new one loads,
+        // so it's turned off here and back on (on the new style) once that's loaded
+        runCatching {
+            if (m.locationComponent.isLocationComponentActivated) m.locationComponent.isLocationComponentEnabled = false
+        }
         m.setStyle(MapStyles.builder(style, dark)) { s ->
             MapStyles.afterLoad(style, dark, s)
             addOverlayLayers(s, routeColor, dark)

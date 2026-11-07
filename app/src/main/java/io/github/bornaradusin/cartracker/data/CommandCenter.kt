@@ -94,9 +94,11 @@ class CommandCenter(
         quiet: Boolean = false,
         speedKmh: Int = TrackerCommands.DEFAULT_SPEED_KMH,
         lowVolts: Double = TrackerCommands.DEFAULT_LOW_VOLTS,
+        voltOffset: Double = 0.0,
     ): Job = scope.launch {
         val o = optionsFor(target.id)
-        val command = TrackerCommands.command(target.kind, action, target.id, o.types, speedKmh, lowVolts)
+        // The tracker compares its own reading, so it gets the threshold less the car's correction
+        val command = TrackerCommands.command(target.kind, action, target.id, o.types, speedKmh, lowVolts - voltOffset)
         if (command == null) {
             say("${target.name}'s tracker can't do that.")
             return@launch
