@@ -29,7 +29,7 @@ One tap is enough: the button shows **Confirming…** until the tracker answers,
 
 These are set on the tracker itself:
 
-- **Vibration or movement**: bumps, knocks or towing while parked
+- **Vibration or movement**: bumps, knocks or towing while parked. MiCODUS trackers only watch for it while the alarm is on.
 - **Low car battery**: on MiCODUS trackers, set the voltage with **−** and **+** under **Alert below**, in steps of 0.1 V (11.5 V at first)
 - **Tracker unplugged**: power to the tracker is cut
 
@@ -53,7 +53,7 @@ If the car is offline, the app won't send these, because the setting couldn't be
 
 At first, this card has:
 
-- **Locate now**: asks the tracker for a fresh position.
+- **Locate now**: asks the tracker for a fresh position. A MiCODUS tracker answers with where it is, in words.
 - **Update rate**: how often the tracker reports. Choose from every 5 s driving / 1 min parked, every 10 s / 3 min, every 30 s / 5 min, or every 1 min / 10 min. Faster rates use more mobile data.
 - **Restart tracker**: restarts it. It's back online within a minute or two.
 
@@ -63,9 +63,12 @@ You choose what's here: see below.
 
 Turn on **More → Commands → Advanced commands** to add this section. It has:
 
-- every command Traccar offers for your tracker
+- on MiCODUS trackers:
+  - **Send all settings to the tracker**: sends every setting on this screen (the tracker alerts, speed limit, low battery voltage and arming automatically), one at a time, each once the last is answered. Out of the box a MiCODUS tracker has its own settings, and some of them text or call the SIM's owner, so run this once after fitting one. It stops if the car goes offline.
+  - **Tracker status**, **Tracker alarm settings** and **Tracker settings**: ask the tracker (`STATUS#`, `ALARM#`, `PARAM#`) and show its answer
+- Traccar's commands for your tracker that need nothing more than a tap. The ones the app's own buttons already send are left out. On MiCODUS trackers only **Locate once** and **Clear the tracker's alarm** are listed: the others are ignored by the tracker, or (factory reset, power off) leave it unreachable except by SMS. On other trackers, **Factory reset** and **Turn tracker off** ask first.
 - the commands saved on your server
-- a **Custom command** box, for any command from your tracker's manual
+- a **Custom command** box, for any command from your tracker's manual. The answer shows in the Alerts list.
 
 ### Choosing what's on Controls
 
