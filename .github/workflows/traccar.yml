@@ -40,7 +40,7 @@ jobs:
 
       - name: Test the JT808 decoder and build
         working-directory: upstream
-        run: ./gradlew test --tests org.traccar.protocol.Jt808ProtocolDecoderTest assemble
+        run: ./gradlew test --tests org.traccar.protocol.Jt808ProtocolDecoderTest --tests org.traccar.protocol.Jt808ProtocolEncoderTest assemble
 
       - name: Put the server program next to the Dockerfile
         run: cp upstream/target/tracker-server.jar traccar/

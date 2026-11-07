@@ -1,8 +1,20 @@
 diff --git a/src/main/java/org/traccar/protocol/Jt808ProtocolDecoder.java b/src/main/java/org/traccar/protocol/Jt808ProtocolDecoder.java
-index 78cd648..c4d2104 100644
+index 78cd648..a59ae6f 100644
 --- a/src/main/java/org/traccar/protocol/Jt808ProtocolDecoder.java
 +++ b/src/main/java/org/traccar/protocol/Jt808ProtocolDecoder.java
-@@ -712,6 +712,9 @@ public class Jt808ProtocolDecoder extends BaseProtocolDecoder {
+@@ -280,6 +280,11 @@ public class Jt808ProtocolDecoder extends BaseProtocolDecoder {
+             return Unpooled.wrappedBuffer(DataConverter.parseHex(
+                     String.format("%20s", uniqueId).replace(' ', '0')));
+         }
++        if (uniqueId.length() < 12 && !uniqueId.isEmpty() && uniqueId.chars().allMatch(Character::isDigit)) {
++            // phone number style id (MiCODUS: 11 digits), sent as 6 BCD bytes with leading zeros
++            return Unpooled.wrappedBuffer(DataConverter.parseHex(
++                    String.format("%12s", uniqueId).replace(' ', '0')));
++        }
+         if (uniqueId.length() % 2 == 0) {
+             return Unpooled.wrappedBuffer(DataConverter.parseHex(uniqueId));
+         } else {
+@@ -712,6 +717,9 @@ public class Jt808ProtocolDecoder extends BaseProtocolDecoder {
          if ("G1C Pro".equals(model)) {
              position.set(Position.KEY_MOTION, BitUtil.check(status, 4));
          }
@@ -12,22 +24,42 @@ index 78cd648..c4d2104 100644
          position.set(Position.KEY_BLOCKED, BitUtil.check(status, 10));
          if ("MV810G".equals(model) || "MV710G".equals(model)) {
              position.set(Position.KEY_DOOR, BitUtil.check(status, 16));
-@@ -1660,7 +1663,21 @@ public class Jt808ProtocolDecoder extends BaseProtocolDecoder {
+@@ -1656,11 +1664,41 @@ public class Jt808ProtocolDecoder extends BaseProtocolDecoder {
+         return positions;
+     }
+ 
++    private static boolean isText(ByteBuf buf, int length) {
++        if (length < 2) {
++            return false;
++        }
++        for (int i = 0; i < length; i++) {
++            int b = buf.getUnsignedByte(buf.readerIndex() + i);
++            if ((b < 0x20 || b > 0x7E) && b != '\n' && b != '\r') {
++                return false;
++            }
++        }
++        return true;
++    }
++
+     private Position decodeTransparent(DeviceSession deviceSession, ByteBuf buf) {
  
          int type = buf.readUnsignedByte();
  
 -        if (type == 0x40) {
-+        if (type == 0x00 && buf.readableBytes() > 4 + 2
-+                && buf.toString(buf.readerIndex(), 4, StandardCharsets.US_ASCII).equals("SMS,")) {
++        if ((type == 0x00 || type == 0xFF) && isText(buf, buf.readableBytes() - 2)) {
 +
++            // MiCODUS command reply: plain text, type 0xFF for pass-through commands,
++            // type 0x00 with an "SMS," prefix for commands sent as bare text
 +            Position position = new Position(getProtocolName());
 +            position.setDeviceId(deviceSession.getDeviceId());
 +
 +            getLastLocation(position, null);
 +
-+            buf.skipBytes(4); // "SMS," prefix of MiCODUS command replies
-+            position.set(Position.KEY_RESULT,
-+                    buf.readCharSequence(buf.readableBytes() - 2, StandardCharsets.US_ASCII).toString().trim());
++            String text = buf.readCharSequence(buf.readableBytes() - 2, StandardCharsets.US_ASCII).toString().trim();
++            if (text.startsWith("SMS,")) {
++                text = text.substring(4);
++            }
++            position.set(Position.KEY_RESULT, text);
 +
 +            return position;
 +
@@ -35,11 +67,58 @@ index 78cd648..c4d2104 100644
  
              Position position = new Position(getProtocolName());
              position.setDeviceId(deviceSession.getDeviceId());
+diff --git a/src/main/java/org/traccar/protocol/Jt808ProtocolEncoder.java b/src/main/java/org/traccar/protocol/Jt808ProtocolEncoder.java
+index ea248e9..111cb82 100644
+--- a/src/main/java/org/traccar/protocol/Jt808ProtocolEncoder.java
++++ b/src/main/java/org/traccar/protocol/Jt808ProtocolEncoder.java
+@@ -44,6 +44,27 @@ public class Jt808ProtocolEncoder extends BaseProtocolEncoder {
+         super(protocol);
+     }
+ 
++    /**
++     * The command as text when it's an SMS style command ending in '#', given as text or as its hex;
++     * null for anything else, such as a complete JT808 message in hex.
++     */
++    static byte[] smsCommand(String data) {
++        if (data == null || data.isEmpty()) {
++            return null;
++        }
++        byte[] bytes = data.matches("(?:[0-9a-fA-F]{2})+")
++                ? DataConverter.parseHex(data) : data.getBytes(StandardCharsets.US_ASCII);
++        if (bytes.length < 2 || bytes[bytes.length - 1] != '#') {
++            return null;
++        }
++        for (byte b : bytes) {
++            if (b < 0x20 || b > 0x7D) {
++                return null;
++            }
++        }
++        return bytes;
++    }
++
+     @Override
+     protected Object encodeCommand(Channel channel, Command command) {
+ 
+@@ -80,6 +101,14 @@ public class Jt808ProtocolEncoder extends BaseProtocolEncoder {
+                         data.writeCharSequence(command.getString(Command.KEY_DATA), StandardCharsets.US_ASCII);
+                         return decoder.formatMessage(
+                                 Jt808ProtocolDecoder.MSG_TRANSPARENT_DOWNLINK, id, false, data);
++                    } else if ((model == null || model.startsWith("MV"))
++                            && smsCommand(command.getString(Command.KEY_DATA)) != null) {
++                        // MiCODUS: a text command (as sent by SMS, e.g. RELAY,0#) goes as pass-through
++                        // type 0xFF, the way their own platform sends it; the tracker replies in kind
++                        data.writeByte(0xFF);
++                        data.writeBytes(smsCommand(command.getString(Command.KEY_DATA)));
++                        return decoder.formatMessage(
++                                Jt808ProtocolDecoder.MSG_TRANSPARENT_DOWNLINK, id, false, data);
+                     } else {
+                         return Unpooled.wrappedBuffer(DataConverter.parseHex(command.getString(Command.KEY_DATA)));
+                     }
 diff --git a/src/test/java/org/traccar/protocol/Jt808ProtocolDecoderTest.java b/src/test/java/org/traccar/protocol/Jt808ProtocolDecoderTest.java
-index 325b6c6..787b07e 100644
+index 325b6c6..d8ec060 100644
 --- a/src/test/java/org/traccar/protocol/Jt808ProtocolDecoderTest.java
 +++ b/src/test/java/org/traccar/protocol/Jt808ProtocolDecoderTest.java
-@@ -99,6 +99,10 @@ public class Jt808ProtocolDecoderTest extends ProtocolTest {
+@@ -99,6 +99,14 @@ public class Jt808ProtocolDecoderTest extends ProtocolTest {
                  "7e070100150120764632790008000000114d442c53455420434f4e464947204f4b21187e"),
                  position(Checks.ATTRIBUTES).attribute(Position.KEY_RESULT, "MD,SET CONFIG OK!"));
  
@@ -47,6 +126,29 @@ index 325b6c6..787b07e 100644
 +                "7e0900000a019176429553016200534d532c5346204f4b527e"),
 +                position(Checks.ATTRIBUTES).attribute(Position.KEY_RESULT, "SF OK"));
 +
++        verifyDecode(decoder, binary(
++                "7e0900000601917129944501c5ff5346204f4b1c7e"),
++                position(Checks.ATTRIBUTES).attribute(Position.KEY_RESULT, "SF OK"));
++
          verifyDecode(decoder, binary(
                  "7e02000070012040000004019c00000000000004030158df9706c9606b002c000000ab250417170023010400000c5305030000003001153101158202008b530b0101cc00262600000ff1137730017e19f100384d08026e73e0003a4d08037e19e800000000047e3b950000000005409017000000000640a69600000000337e"),
                  position().attribute("tire1Pressure", 1.4));
+diff --git a/src/test/java/org/traccar/protocol/Jt808ProtocolEncoderTest.java b/src/test/java/org/traccar/protocol/Jt808ProtocolEncoderTest.java
+index ebb2a91..dcd2e5c 100644
+--- a/src/test/java/org/traccar/protocol/Jt808ProtocolEncoderTest.java
++++ b/src/test/java/org/traccar/protocol/Jt808ProtocolEncoderTest.java
+@@ -25,6 +25,14 @@ public class Jt808ProtocolEncoderTest extends ProtocolTest {
+         verifyEncode(channel, command,
+                 binary("7e830000140b3a73ce2ff2000001546573742c20436f6d6d616e642c2031323323a57e"));
+ 
++        command.set(Command.KEY_DATA, "41524d23");
++        verifyEncode(channel, command,
++                binary("7e890000050b3a73ce2ff20000ff41524d235f7e"));
++
++        command.set(Command.KEY_DATA, "ARM#");
++        verifyEncode(channel, command,
++                binary("7e890000050b3a73ce2ff20000ff41524d235f7e"));
++
+         encoder.setModelOverride("BSJ");
+ 
+         command.set(Command.KEY_DATA, "Test, Command, 123#");
