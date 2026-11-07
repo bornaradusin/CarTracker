@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pictures the app hands to other apps when sharing -->
+<paths>
+    <cache-path name="shared" path="shared/" />
+</paths>

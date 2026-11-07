@@ -40,6 +40,8 @@ Tap **Heatmap** to see every trip over a **week, 4 weeks, 3 months or a year** o
 
 The first time a long stretch loads it can take a while: it shows how many weeks are done. Finished weeks are kept on your phone after that.
 
+Tap the **share** button at the top right to send the heatmap as a picture. It's the map exactly as you see it, zoomed and moved however you like, with the car's name, the dates and the colour key underneath.
+
 <br clear="right">
 
 

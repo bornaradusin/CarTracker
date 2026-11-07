@@ -103,6 +103,9 @@ fun TrackerMap(
     /** Where the car has been, drawn as dots coloured by how often. */
     heat: List<Pair<Double, Double>> = emptyList(),
     camera: MapCamera? = null,
+    /** Raise to take a picture of the map; it arrives in [onSnapshot]. */
+    snapshot: Int = 0,
+    onSnapshot: (android.graphics.Bitmap) -> Unit = {},
     /** Shows where you are, as a blue dot, once location is allowed. */
     showMyLocation: Boolean = false,
     topPadding: Dp = 0.dp,
@@ -248,6 +251,12 @@ fun TrackerMap(
             )
         } else emptyList()
         s.getSourceAs<GeoJsonSource>(SOURCE_ENDS)?.setGeoJson(FeatureCollection.fromFeatures(ends))
+    }
+
+    val snapshotTaken by rememberUpdatedState(onSnapshot)
+    LaunchedEffect(map, snapshot) {
+        val m = map ?: return@LaunchedEffect
+        if (snapshot > 0) m.snapshot { bitmap -> snapshotTaken(bitmap) }
     }
 
     LaunchedEffect(loaded, heat) {

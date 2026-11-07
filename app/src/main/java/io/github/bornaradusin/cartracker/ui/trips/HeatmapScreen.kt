@@ -26,14 +26,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -45,6 +50,11 @@ import io.github.bornaradusin.cartracker.ui.map.MapStyle
 import io.github.bornaradusin.cartracker.ui.map.TrackerMap
 import io.github.bornaradusin.cartracker.ui.theme.Ic
 import io.github.bornaradusin.cartracker.ui.theme.LocalAppColors
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.maplibre.android.geometry.LatLng
 
 /** Every trip over a stretch of time on one map: the more often a road is driven, the hotter it shows. */
@@ -58,6 +68,12 @@ fun HeatmapScreen(vm: AppViewModel, onBack: () -> Unit) {
     var weeks by rememberSaveable { mutableIntStateOf(4) }
     var panelHeight by remember { mutableIntStateOf(0) }
     val deviceId = car?.device?.id ?: 0L
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var snapshot by remember { mutableIntStateOf(0) }
+    var sharing by remember { mutableStateOf(false) }
+    var shareProblem by remember { mutableStateOf<String?>(null) }
+    val carName = car?.device?.name ?: "the car"
 
     LaunchedEffect(deviceId, weeks) { if (deviceId != 0L) vm.loadHeat(deviceId, weeks) }
 
@@ -72,6 +88,17 @@ fun HeatmapScreen(vm: AppViewModel, onBack: () -> Unit) {
         )
     }
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val canShare = current != null && !current.loading && points.isNotEmpty() && !sharing
+
+    // The map answers with a picture; if it never does, don't leave the button stuck
+    LaunchedEffect(snapshot) {
+        if (snapshot == 0) return@LaunchedEffect
+        delay(10_000)
+        if (sharing) {
+            sharing = false
+            shareProblem = "Couldn't take a picture of the map. Try again."
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(c.background)) {
         TrackerMap(
@@ -81,6 +108,35 @@ fun HeatmapScreen(vm: AppViewModel, onBack: () -> Unit) {
             camera = if (corners.isNotEmpty()) MapCamera.Fit(corners, corners.hashCode()) else null,
             topPadding = topInset + 72.dp,
             bottomPadding = with(density) { panelHeight.toDp() },
+            snapshot = snapshot,
+            onSnapshot = { bitmap ->
+                if (!sharing) return@TrackerMap
+                val top = with(density) { (topInset + 72.dp).roundToPx() }
+                val bottom = bitmap.height - panelHeight
+                val title = HeatmapShare.title(carName)
+                val period = HeatmapShare.period(weeks)
+                val credit = if (MapStyle.named(settings.mapStyle) == MapStyle.Terrain) {
+                    "© OpenStreetMap contributors · OpenTopoMap (CC-BY-SA)"
+                } else {
+                    "© OpenStreetMap contributors · OpenFreeMap"
+                }
+                val colors = HeatmapShare.Colors(c.surface.toArgb(), c.ink.toArgb(), c.muted.toArgb(), c.accent.toArgb())
+                scope.launch {
+                    try {
+                        val file = withContext(Dispatchers.Default) {
+                            val picture = HeatmapShare.compose(bitmap, top, bottom, title, period, credit, colors, density.density)
+                            withContext(Dispatchers.IO) { HeatmapShare.save(context, picture) }
+                        }
+                        HeatmapShare.share(context, file, title)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        shareProblem = "Couldn't make the picture. Try again."
+                    } finally {
+                        sharing = false
+                    }
+                }
+            },
         )
 
         Row(
@@ -95,6 +151,23 @@ fun HeatmapScreen(vm: AppViewModel, onBack: () -> Unit) {
                 Column(Modifier.heightIn(min = 48.dp).padding(horizontal = 18.dp, vertical = 6.dp), verticalArrangement = Arrangement.Center) {
                     Text("Where ${car?.device?.name ?: "the car"} has been", style = MaterialTheme.typography.labelLarge, color = c.ink)
                     Text("Blue: passed once · red: driven most often", style = MaterialTheme.typography.bodySmall, color = c.muted)
+                }
+            }
+            Surface(
+                onClick = {
+                    shareProblem = null
+                    sharing = true
+                    snapshot++
+                },
+                enabled = canShare,
+                shape = CircleShape,
+                color = c.surface,
+                contentColor = c.ink,
+                shadowElevation = 4.dp,
+                modifier = Modifier.size(48.dp).semantics { contentDescription = "Share heatmap picture" },
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Ic.share, null, modifier = Modifier.size(22.dp).alpha(if (canShare) 1f else 0.35f))
                 }
             }
         }
@@ -142,8 +215,13 @@ fun HeatmapScreen(vm: AppViewModel, onBack: () -> Unit) {
                 }
                 current.error != null -> Text(current.error, style = MaterialTheme.typography.bodyMedium, color = c.warnText)
                 points.isEmpty() -> Text("No trips in this time.", style = MaterialTheme.typography.bodyMedium, color = c.muted)
-                else -> Text("Zoom in to see single streets.", style = MaterialTheme.typography.bodySmall, color = c.muted)
+                else -> Text(
+                    if (sharing) "Making the picture…" else "Zoom in to see single streets. Share sends the map as you see it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.muted,
+                )
             }
+            shareProblem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.warnText) }
         }
     }
 }
