@@ -34,7 +34,7 @@ Finished days are kept on your phone, so a month or a year opens quickly after t
 
 <img src="https://raw.githubusercontent.com/wiki/bornaradusin/CarTracker/images/heatmap.png" width="270" align="right" alt="Heatmap">
 
-Tap **Heatmap** to see every trip over a **week, 4 weeks, 3 months or a year** on one map. Roads driven more often glow brighter, from blue through green and yellow to red. Zoom in to see single streets.
+Tap **Heatmap** to see every trip over a **week, 4 weeks, 3 months or a year** on one map. Each spot is a soft dot coloured by how often the car passed it: blue for once, through green and yellow, to red for the roads driven most. Zoom in to see single streets.
 
 The first time a long stretch loads it can take a while: it shows how many weeks are done. Finished weeks are kept on your phone after that.
 

@@ -94,7 +94,7 @@ fun HeatmapScreen(vm: AppViewModel, onBack: () -> Unit) {
             Surface(shape = RoundedCornerShape(24.dp), color = c.surface, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
                 Column(Modifier.heightIn(min = 48.dp).padding(horizontal = 18.dp, vertical = 6.dp), verticalArrangement = Arrangement.Center) {
                     Text("Where ${car?.device?.name ?: "the car"} has been", style = MaterialTheme.typography.labelLarge, color = c.ink)
-                    Text("Brighter means driven more often", style = MaterialTheme.typography.bodySmall, color = c.muted)
+                    Text("Blue: passed once · red: driven most often", style = MaterialTheme.typography.bodySmall, color = c.muted)
                 }
             }
         }

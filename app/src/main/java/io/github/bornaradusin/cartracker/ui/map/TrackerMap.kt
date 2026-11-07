@@ -41,8 +41,8 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
+import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillLayer
-import org.maplibre.android.style.layers.HeatmapLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
@@ -100,7 +100,7 @@ fun TrackerMap(
     showRouteEnds: Boolean = false,
     /** Speed in km/h at each point of [route]: draws the route in speed colours (see [SpeedColors]). */
     routeSpeeds: List<Double> = emptyList(),
-    /** Where the car has been, drawn as a heatmap. */
+    /** Where the car has been, drawn as dots coloured by how often. */
     heat: List<Pair<Double, Double>> = emptyList(),
     camera: MapCamera? = null,
     /** Shows where you are, as a blue dot, once location is allowed. */
@@ -247,24 +247,21 @@ fun TrackerMap(
 
     LaunchedEffect(loaded, heat) {
         val s = loaded ?: return@LaunchedEffect
-        // Points within about 45 m are counted together, so a year of driving stays light: a spot passed
-        // often gets a few points stacked (one more each time the count doubles), not a weight, which
-        // crashes the map's renderer. Worked out away from the screen's thread.
+        // Points within about 45 m are counted together, so a year of driving stays light; each spot
+        // is drawn once, coloured by how often the car passed. Worked out away from the screen's thread.
         val collection = withContext(Dispatchers.Default) {
             val cells = HashMap<Long, IntArray>()
             heat.forEach { (lat, lon) ->
                 val key = Math.round(lat / HEAT_CELL) * 10_000_000L + Math.round(lon / HEAT_CELL)
                 cells.getOrPut(key) { IntArray(1) }[0]++
             }
-            val features = ArrayList<Feature>()
-            cells.forEach { (key, count) ->
+            // Least driven first, so the most driven spots are drawn on top
+            val features = cells.entries.sortedBy { it.value[0] }.map { (key, count) ->
                 var lonCell = key % 10_000_000L
                 var latCell = key / 10_000_000L
                 if (lonCell > 5_000_000L) { lonCell -= 10_000_000L; latCell++ }
                 if (lonCell < -5_000_000L) { lonCell += 10_000_000L; latCell-- }
-                val copies = (1 + (31 - Integer.numberOfLeadingZeros(count[0]))).coerceAtMost(6)
-                val point = Point.fromLngLat(lonCell * HEAT_CELL, latCell * HEAT_CELL)
-                repeat(copies) { features += Feature.fromGeometry(point) }
+                Feature.fromGeometry(Point.fromLngLat(lonCell * HEAT_CELL, latCell * HEAT_CELL)).apply { addNumberProperty("w", count[0]) }
             }
             FeatureCollection.fromFeatures(features)
         }
@@ -350,27 +347,26 @@ private fun addOverlayLayers(style: Style, routeColor: Color, dark: Boolean) {
     listOf(SOURCE_HEAT, SOURCE_FENCES, SOURCE_FENCE_LABELS, SOURCE_ROUTE_ALL, SOURCE_ROUTE_DONE, SOURCE_ROUTE_SPEED, SOURCE_ENDS, SOURCE_MARKERS).forEach { id ->
         if (style.getSource(id) == null) style.addSource(GeoJsonSource(id))
     }
+    // Where the car has been: soft dots, blue where it passed once through to red where it passes most.
+    // (MapLibre's heatmap layer crashes its renderer on some phones, so it isn't used.)
     style.addLayer(
-        HeatmapLayer("ct-heat", SOURCE_HEAT).withProperties(
-            PropertyFactory.heatmapRadius(
-                Expression.interpolate(Expression.linear(), Expression.zoom(), Expression.stop(4, 3f), Expression.stop(10, 8f), Expression.stop(15, 18f)),
+        CircleLayer("ct-heat", SOURCE_HEAT).withProperties(
+            PropertyFactory.circleRadius(
+                Expression.interpolate(Expression.linear(), Expression.zoom(), Expression.stop(4, 1.5f), Expression.stop(10, 3.5f), Expression.stop(14, 8f), Expression.stop(17, 16f)),
             ),
-            PropertyFactory.heatmapIntensity(
-                Expression.interpolate(Expression.linear(), Expression.zoom(), Expression.stop(4, 0.5f), Expression.stop(15, 1.6f)),
-            ),
-            PropertyFactory.heatmapColor(
+            PropertyFactory.circleColor(
                 Expression.interpolate(
                     Expression.linear(),
-                    Expression.heatmapDensity(),
-                    Expression.stop(0, Expression.rgba(0, 0, 0, 0)),
-                    Expression.stop(0.1, Expression.rgba(29, 91, 216, 0.55)),
-                    Expression.stop(0.3, Expression.rgba(0, 188, 220, 0.75)),
-                    Expression.stop(0.5, Expression.rgba(76, 200, 80, 0.85)),
-                    Expression.stop(0.7, Expression.rgba(250, 205, 40, 0.9)),
-                    Expression.stop(1, Expression.rgba(226, 49, 43, 0.95)),
+                    Expression.get("w"),
+                    Expression.stop(1, Expression.rgb(29, 91, 216)),
+                    Expression.stop(3, Expression.rgb(0, 188, 220)),
+                    Expression.stop(6, Expression.rgb(76, 200, 80)),
+                    Expression.stop(12, Expression.rgb(250, 205, 40)),
+                    Expression.stop(25, Expression.rgb(226, 49, 43)),
                 ),
             ),
-            PropertyFactory.heatmapOpacity(0.9f),
+            PropertyFactory.circleOpacity(0.6f),
+            PropertyFactory.circleBlur(0.7f),
         ),
     )
     style.addLayer(
