@@ -14,7 +14,7 @@ The **Trips** tab shows the car's driving, one day at a time.
 
 Trips are worked out by your Traccar server from the car's positions. A stop shorter than a few minutes counts as part of the same trip.
 
-Only real drives are listed: when the engine runs while the car stands still (idling, waiting in a car park), Traccar counts that as a trip too, so anything under 300 m is left out of the list, the day's totals and the stats. **Parked for** counts from the end of the last real drive.
+Only real drives are listed: when the engine runs while the car stands still (idling, waiting in a car park), Traccar counts that as a trip too, so anything under 200 m is left out of the list, the day's totals and the stats. **Parked for** counts from the end of the last real drive.
 
 
 ## Stats
