@@ -36,8 +36,10 @@ class AlertCenter(
         val devices = live.devices.value.ifEmpty { runCatching { api.devices().map { it.first } }.getOrDefault(emptyList()) }
         if (devices.isEmpty()) return@withLock
         val now = Instant.now()
+        // Events carry the tracker's time, so ones uploaded late (out of signal for a while) are older
+        // than the last check: look back an hour; the id filter below skips ones already seen
         val since = if (s.lastEventCheck > 0) {
-            Instant.ofEpochMilli(s.lastEventCheck).minusSeconds(180)
+            Instant.ofEpochMilli(s.lastEventCheck).minusSeconds(3_600)
         } else {
             now.minusSeconds(900)
         }
@@ -45,7 +47,7 @@ class AlertCenter(
         val newest = maxOf(s.lastEventId, events.maxOfOrNull { it.id } ?: 0L)
         settings.setEventCheckpoint(newest, now.toEpochMilli())
         // The very first check only sets the starting point, so signing in doesn't replay old events.
-        if (s.lastEventId == 0L) return@withLock
+        if (s.lastEventCheck == 0L) return@withLock
 
         val fresh = events.filter { it.id > s.lastEventId }
             .filter { event -> AlertKind.of(event)?.key?.let { it in s.alertKinds } == true }

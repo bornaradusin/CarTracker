@@ -32,6 +32,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.draw.rotate
@@ -104,6 +107,10 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
     val fences by vm.geofences.collectAsStateWithLifecycle()
     val unread by vm.unreadAlerts.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
+    val clock by vm.clock.collectAsStateWithLifecycle()
+    // A short screen (landscape): the card is capped and scrolls, so the buttons above stay reachable
+    val screenHeight = LocalConfiguration.current.screenHeightDp
+    val short = screenHeight < 520
     val pendingChanges by vm.pending.collectAsStateWithLifecycle()
     val mapStyle = MapStyle.named(settings.mapStyle)
 
@@ -283,6 +290,7 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .then(if (short) Modifier.heightIn(max = (screenHeight - 96).dp) else Modifier)
                 .onSizeChanged { sheetHeight = it.height }
                 .offset { IntOffset(0, sheetOffset.value.roundToInt()) }
                 .draggable(
@@ -292,9 +300,10 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
                 ),
         ) {
             val info = car
-            if (info != null) {
+            if (info != null) Box(if (short) Modifier.verticalScroll(rememberScrollState()) else Modifier) {
                 CarCard(
                     info = info,
+                    clock = clock,
                     busy = busy,
                     alarmPending = pendingChanges[info.device.id]?.key == PendingChange.ALARM,
                     fuelPending = pendingChanges[info.device.id]?.key == PendingChange.FUEL,
@@ -354,6 +363,7 @@ private fun StyleSwatch(style: MapStyle, c: AppColors) {
 @Composable
 private fun CarCard(
     info: CarInfo,
+    clock: Instant,
     busy: String?,
     alarmPending: Boolean,
     fuelPending: Boolean,
@@ -391,7 +401,7 @@ private fun CarCard(
                     CarStatus.OFFLINE -> StatusPill("Offline", c.warnText, c.warnTint, c.warnText)
                 }
                 Text(
-                    if (info.status == CarStatus.OFFLINE) "Last seen ${Format.ago(info.updated)}" else "Updated ${Format.time(info.updated)}",
+                    if (info.status == CarStatus.OFFLINE) "Last seen ${Format.ago(info.updated, clock)}" else "Updated ${Format.time(info.updated)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = c.muted,
                 )
@@ -420,7 +430,7 @@ private fun CarCard(
             } else {
                 StatTile(
                     "Parked for",
-                    info.parkedSince?.let { Format.duration(Instant.now().toEpochMilli() - it.toEpochMilli()) }
+                    info.parkedSince?.let { Format.duration(clock.toEpochMilli() - it.toEpochMilli()) }
                         ?: if (info.status == CarStatus.PARKED) "< 5 min" else "–",
                     Modifier.weight(1f),
                 )
@@ -434,8 +444,7 @@ private fun CarCard(
                 Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable(onClick = onBattery)
-                    .semantics { contentDescription = "Battery history" },
+                    .clickable(onClickLabel = "Show battery history", onClick = onBattery),
                 // Below the warning level set for the car (11.8 V unless changed)
                 valueColor = if (volts != null && volts >= 1.0 && volts < low) c.warnText else null,
             )
@@ -489,7 +498,8 @@ private fun QuickAction(
     onClick: () -> Unit,
 ) {
     Column(
-        Modifier.width(76.dp).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(vertical = 2.dp),
+        // Not tappable while it's working, so one tap can't send the same thing twice
+        Modifier.width(76.dp).clip(RoundedCornerShape(16.dp)).clickable(enabled = !working, onClick = onClick).padding(vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

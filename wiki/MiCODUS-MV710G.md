@@ -24,11 +24,15 @@ MiCODUS trackers send their time as UTC, while Traccar reads JT808 times as Chin
 DECODER_TIMEZONE: "UTC"
 ```
 
-## 4. Traccar with MV710G replies
+## 4. Traccar for the MV710G
 
-The tracker answers every command (for example `SF OK` when the alarm is set), but Traccar 6.17 drops those answers. Without them the app can't confirm anything, and settings stored on the tracker never change in the app.
+Traccar 6.17 sends MiCODUS text commands (like `RELAY,0#`) as bare text, which the tracker only picks up some of the time, and it drops the tracker's answers (for example `SF OK` when the alarm is set). Without the answers the app can't confirm anything.
 
-Until an official Traccar release reads them, use this image instead of `traccar/traccar`. It's Traccar 6.17.0 with only that fix and the armed-state reading added ([details](https://github.com/bornaradusin/CarTracker/tree/main/traccar)):
+Until an official Traccar release handles them, use this image instead of `traccar/traccar`. It's Traccar 6.17.0 with only these fixes ([details](https://github.com/bornaradusin/CarTracker/tree/main/traccar)):
+
+- commands are sent the way MiCODUS's own platform sends them (a JT808 pass-through message), so the tracker gets them every time
+- the tracker's answers are read and show as command results
+- the alarm's armed state is read from every position (set the car's **Model** to `MV710G` in Traccar)
 
 ```yaml
 image: ghcr.io/bornaradusin/cartracker-traccar:6.17.0-mv710g

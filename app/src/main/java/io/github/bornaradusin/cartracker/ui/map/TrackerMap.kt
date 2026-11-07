@@ -34,6 +34,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
@@ -166,7 +168,7 @@ fun TrackerMap(
         loaded = null
         m.setStyle(MapStyles.builder(style, dark)) { s ->
             MapStyles.afterLoad(style, dark, s)
-            addOverlayLayers(s, routeColor)
+            addOverlayLayers(s, routeColor, dark)
             loaded = s
         }
     }
@@ -211,12 +213,13 @@ fun TrackerMap(
         s.getSourceAs<GeoJsonSource>(SOURCE_FENCE_LABELS)?.setGeoJson(FeatureCollection.fromFeatures(labels))
     }
 
-    LaunchedEffect(loaded, route, routeDone, showRouteEnds, routeSpeeds) {
+    // A route in speed colours doesn't change as a replay moves on, so it's only drawn again when the route does
+    val coloured = routeSpeeds.size == route.size && route.size >= 2
+    LaunchedEffect(loaded, route, if (coloured) -2 else routeDone, showRouteEnds, routeSpeeds) {
         val s = loaded ?: return@LaunchedEffect
         fun line(points: List<LatLng>): FeatureCollection =
             if (points.size < 2) FeatureCollection.fromFeatures(emptyList())
             else FeatureCollection.fromFeature(Feature.fromGeometry(LineString.fromLngLats(points.map { Point.fromLngLat(it.longitude, it.latitude) })))
-        val coloured = routeSpeeds.size == route.size && route.size >= 2
         s.getSourceAs<GeoJsonSource>(SOURCE_ROUTE_SPEED)?.setGeoJson(
             if (coloured) FeatureCollection.fromFeatures(SpeedColors.segments(route, routeSpeeds)) else FeatureCollection.fromFeatures(emptyList()),
         )
@@ -244,8 +247,25 @@ fun TrackerMap(
 
     LaunchedEffect(loaded, heat) {
         val s = loaded ?: return@LaunchedEffect
-        val points = heat.map { (lat, lon) -> Feature.fromGeometry(Point.fromLngLat(lon, lat)) }
-        s.getSourceAs<GeoJsonSource>(SOURCE_HEAT)?.setGeoJson(FeatureCollection.fromFeatures(points))
+        // Points within about 45 m are counted together (as a weight), so a year of driving stays light,
+        // and it's worked out away from the screen's thread
+        val collection = withContext(Dispatchers.Default) {
+            val cells = HashMap<Long, IntArray>()
+            heat.forEach { (lat, lon) ->
+                val key = Math.round(lat / HEAT_CELL) * 10_000_000L + Math.round(lon / HEAT_CELL)
+                cells.getOrPut(key) { IntArray(1) }[0]++
+            }
+            FeatureCollection.fromFeatures(
+                cells.map { (key, count) ->
+                    var lonCell = key % 10_000_000L
+                    var latCell = key / 10_000_000L
+                    if (lonCell > 5_000_000L) { lonCell -= 10_000_000L; latCell++ }
+                    if (lonCell < -5_000_000L) { lonCell += 10_000_000L; latCell-- }
+                    Feature.fromGeometry(Point.fromLngLat(lonCell * HEAT_CELL, latCell * HEAT_CELL)).apply { addNumberProperty("w", count[0]) }
+                },
+            )
+        }
+        s.getSourceAs<GeoJsonSource>(SOURCE_HEAT)?.setGeoJson(collection)
     }
 
     LaunchedEffect(map, camera?.stamp) {
@@ -318,10 +338,11 @@ private const val SOURCE_ROUTE_DONE = "ct-route-done"
 private const val SOURCE_ENDS = "ct-route-ends"
 private const val SOURCE_ROUTE_SPEED = "ct-route-speed"
 private const val SOURCE_HEAT = "ct-heat"
+private const val HEAT_CELL = 0.0004
 private const val IMAGE_START = "ct-start"
 private const val IMAGE_END = "ct-end"
 
-private fun addOverlayLayers(style: Style, routeColor: Color) {
+private fun addOverlayLayers(style: Style, routeColor: Color, dark: Boolean) {
     val accent = routeColor.toArgb()
     listOf(SOURCE_HEAT, SOURCE_FENCES, SOURCE_FENCE_LABELS, SOURCE_ROUTE_ALL, SOURCE_ROUTE_DONE, SOURCE_ROUTE_SPEED, SOURCE_ENDS, SOURCE_MARKERS).forEach { id ->
         if (style.getSource(id) == null) style.addSource(GeoJsonSource(id))
@@ -346,6 +367,7 @@ private fun addOverlayLayers(style: Style, routeColor: Color) {
                     Expression.stop(1, Expression.rgba(226, 49, 43, 0.95)),
                 ),
             ),
+            PropertyFactory.heatmapWeight(Expression.get("w")),
             PropertyFactory.heatmapOpacity(0.9f),
         ),
     )
@@ -368,7 +390,8 @@ private fun addOverlayLayers(style: Style, routeColor: Color) {
             PropertyFactory.textFont(arrayOf("Noto Sans Bold")),
             PropertyFactory.textSize(12f),
             PropertyFactory.textColor(accent),
-            PropertyFactory.textHaloColor(android.graphics.Color.WHITE),
+            // A dark halo on dark maps, so light place names stay readable
+            PropertyFactory.textHaloColor(if (dark) 0xFF0B1220.toInt() else android.graphics.Color.WHITE),
             PropertyFactory.textHaloWidth(1.5f),
             PropertyFactory.textOffset(arrayOf(0f, -2.2f)),
             PropertyFactory.textAllowOverlap(true),

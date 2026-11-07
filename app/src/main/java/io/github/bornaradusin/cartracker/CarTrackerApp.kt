@@ -70,6 +70,10 @@ class AppContainer(val app: Application) {
                 if (changed) live.reset()
             }
         }
+        // Command messages (no reply, offline) when the app isn't open, as after using the alarm tile
+        scope.launch {
+            commands.messages.collect { text -> if (!alerts.appVisible) Notifier.commandMessage(app, text) }
+        }
         // The low-battery warning and the home-screen widget follow every new position
         scope.launch {
             live.positions.debounce(1_000).collect { positions ->

@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.putJsonObject
@@ -106,14 +107,24 @@ class TraccarApi {
         return AppJson.decodeFromString(execute(Request.Builder().url(url).header("Accept", JSON).get().build()).body)
     }
 
-    suspend fun signOut() {
-        val t = token
-        runCatching {
-            if (t != null) {
-                execute(request(baseUrl, "/api/session/token/revoke").post(FormBody.Builder().add("token", t).build()).build())
+    /** The server and token being signed out of, kept so they can be revoked after the app has moved on. */
+    data class Session(val base: String, val token: String?)
+
+    fun sessionForSignOut() = Session(baseUrl, token)
+
+    /** Revokes [session]'s token on its server. */
+    suspend fun signOut(session: Session) {
+        val t = session.token
+        if (session.base.isNotBlank() && t != null) {
+            runCatching {
+                execute(
+                    request(session.base, "/api/session/token/revoke", auth = false)
+                        .header("Authorization", "Bearer $t")
+                        .post(FormBody.Builder().add("token", t).build())
+                        .build(),
+                )
             }
         }
-        runCatching { execute(request(baseUrl, "/api/session").delete().build()) }
         clearSession()
     }
 
@@ -229,17 +240,14 @@ class TraccarApi {
     }
 
     /** Changes a place's name, size and icon, keeping everything else Traccar stores for it. */
-    suspend fun updateGeofence(id: Long, name: String, latitude: Double, longitude: Double, radius: Double, icon: String): Geofence {
+    /** Saves a place's name, icon and, for a circle, its size ([area] null keeps the shape it has). */
+    suspend fun updateGeofence(id: Long, name: String, area: String?, icon: String): Geofence {
         val current = AppJson.parseToJsonElement(get("/api/geofences/$id")) as? JsonObject
             ?: throw ApiException(404, "That place no longer exists.")
         val attributes = (current["attributes"] as? JsonObject).orEmpty() + ("icon" to JsonPrimitive(icon))
-        val updated = JsonObject(
-            current + mapOf(
-                "name" to JsonPrimitive(name),
-                "area" to JsonPrimitive("CIRCLE ($latitude $longitude, ${radius.toInt()})"),
-                "attributes" to JsonObject(attributes),
-            ),
-        )
+        val changes = mutableMapOf<String, JsonElement>("name" to JsonPrimitive(name), "attributes" to JsonObject(attributes))
+        if (area != null) changes["area"] = JsonPrimitive(area)
+        val updated = JsonObject(current + changes)
         val body = AppJson.encodeToString(JsonObject.serializer(), updated).toRequestBody(JSON_TYPE)
         return AppJson.decodeFromString(execute(request(baseUrl, "/api/geofences/$id").put(body).build()).body)
     }

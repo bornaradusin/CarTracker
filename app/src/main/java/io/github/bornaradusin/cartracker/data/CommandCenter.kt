@@ -143,6 +143,10 @@ class CommandCenter(
 
     /** After signing out: the next server has other cars and commands. */
     fun clear() {
+        watchers.values.forEach { it.cancel() }
+        watchers.clear()
+        _pending.value = emptyMap()
+        _reply.value = null
         _options.value = emptyMap()
     }
 
@@ -176,13 +180,23 @@ class CommandCenter(
             say("Still waiting for ${target.name} to confirm the last change. Try again in a moment.")
             return false
         }
+        // A second tap while the first is still being sent does nothing
+        if (_busy.value != null) return false
+        // Marked as waiting before anything is sent, so a quick second tap (or the tile) can't send it twice
+        if (change != null) _pending.update { it + (target.id to change) }
         _busy.value = label
+        var watching = false
         return try {
             val o = optionsFor(target.id)
             val toSend = if (preferSaved) TrackerCommands.preferSaved(command, o.saved, target.id) else command
             val sentAt = Instant.now()
+            // Only replies newer than this one count as the answer
+            val lastReply = runCatching {
+                api.events(listOf(target.id), sentAt.minusSeconds(3_600), sentAt.plusSeconds(60))
+                    .filter { it.type == "commandResult" }
+                    .maxOfOrNull { it.id }
+            }.getOrNull() ?: 0L
             val now = api.sendCommand(toSend)
-            if (change != null) _pending.update { it + (target.id to change) }
             if (!quiet && !now) {
                 say(
                     if (change != null) "${target.name} went offline. It gets this when it reconnects, and the setting changes once it confirms."
@@ -190,7 +204,8 @@ class CommandCenter(
                 )
             }
             // A setting sent straight away is sent again if the tracker doesn't answer: they're safe to repeat
-            watchReply(target, label, sentAt, if (now) 100_000L else 15 * 60_000L, change, toSend.takeIf { now && change != null })
+            watchReply(target, label, sentAt, lastReply, if (now) 100_000L else 15 * 60_000L, change, toSend.takeIf { now && change != null })
+            watching = true
             true
         } catch (e: ApiException) {
             say(
@@ -205,6 +220,7 @@ class CommandCenter(
             false
         } finally {
             _busy.value = null
+            if (change != null && !watching) _pending.update { if (it[target.id] === change) it - target.id else it }
         }
     }
 
@@ -217,6 +233,7 @@ class CommandCenter(
         target: CommandTarget,
         label: String,
         sentAt: Instant,
+        lastReply: Long,
         windowMs: Long,
         change: PendingChange?,
         resend: JsonObject?,
@@ -226,7 +243,7 @@ class CommandCenter(
         watchers[id] = scope.launch {
             try {
                 val from = sentAt.minusSeconds(5)
-                val until = System.currentTimeMillis() + windowMs
+                var until = System.currentTimeMillis() + windowMs
                 var resent = 0
                 while (isActive && System.currentTimeMillis() < until) {
                     delay(3_000)
@@ -234,13 +251,22 @@ class CommandCenter(
                     val waited = System.currentTimeMillis() - sentAt.toEpochMilli()
                     if (resend != null && resent < RESEND_AFTER.size && waited >= RESEND_AFTER[resent]) {
                         resent++
-                        runCatching { api.sendCommand(resend) }
+                        val sent = runCatching { api.sendCommand(resend) }.getOrDefault(true)
+                        if (!sent) {
+                            // The tracker dropped off: Traccar keeps the command for when it reconnects
+                            resent = RESEND_AFTER.size
+                            until = System.currentTimeMillis() + 15 * 60_000L
+                            say("${target.name} went offline. It gets this when it reconnects, and the app shows the change once it confirms.")
+                        }
                     }
-                    val event = runCatching { api.events(listOf(id), from, Instant.now().plusSeconds(60)) }
+                    val raw = runCatching { api.events(listOf(id), from, Instant.now().plusSeconds(60)) }
                         .getOrNull()
-                        ?.lastOrNull { it.type == "commandResult" }
+                        .orEmpty()
+                        .filter { it.type == "commandResult" && it.id > lastReply }
+                        .map { it.attributes.str("result").orEmpty() }
+                        // An answer about something else (a late reply to an earlier command) isn't this one's
+                        .lastOrNull { reply -> change == null || TrackerCommands.replyAbout(reply).let { it == null || it == change.key to change.on } }
                         ?: continue
-                    val raw = event.attributes.str("result").orEmpty()
                     val text = TrackerCommands.friendlyReply(raw)
                     if (text.isEmpty()) continue
                     val failed = TrackerCommands.isFailure(raw)
@@ -258,7 +284,7 @@ class CommandCenter(
                     )
                 }
             } finally {
-                if (change != null) _pending.update { it - id }
+                if (change != null) _pending.update { if (it[id] === change) it - id else it }
             }
         }
     }

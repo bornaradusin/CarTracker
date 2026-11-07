@@ -18,7 +18,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         useHighestRefreshRate()
-        if (intent?.getBooleanExtra(EXTRA_OPEN_ALERTS, false) == true) openAlerts.intValue++
+        // Only on a fresh start: after a rotation the same intent would open the alerts again
+        if (savedInstanceState == null && intent?.getBooleanExtra(EXTRA_OPEN_ALERTS, false) == true) {
+            openAlerts.intValue++
+            intent.removeExtra(EXTRA_OPEN_ALERTS)
+        }
         setContent { CarTrackerRoot(openAlertsSignal = openAlerts.intValue) }
     }
 

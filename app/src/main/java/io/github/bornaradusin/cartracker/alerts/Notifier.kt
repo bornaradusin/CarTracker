@@ -67,6 +67,10 @@ object Notifier {
     fun alert(context: Context, id: Long, title: String, text: String, warning: Boolean) =
         post(context, (id % Int.MAX_VALUE).toInt() + 100, title, text, warning)
 
+    /** A message about a command when the app isn't on screen (sent from the alarm tile). */
+    fun commandMessage(context: Context, text: String) =
+        post(context, -2_000, text, "", warning = false)
+
     /** The app's own low-battery warning: one per car, replacing the last. */
     fun batteryLow(context: Context, deviceId: Long, title: String, text: String) =
         post(context, -1_000 - (deviceId % 100_000).toInt(), title, text, warning = true)

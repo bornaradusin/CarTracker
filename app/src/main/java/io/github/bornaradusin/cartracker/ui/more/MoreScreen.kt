@@ -8,6 +8,7 @@ import io.github.bornaradusin.cartracker.ui.components.ColorRow
 import io.github.bornaradusin.cartracker.data.Geofence
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Slider
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import io.github.bornaradusin.cartracker.util.Format
@@ -86,6 +87,7 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
     var signingOut by remember { mutableStateOf(false) }
     var trackerTypeDialog by remember { mutableStateOf(false) }
     var odometerDialog by remember { mutableStateOf(false) }
+    var deletingPlace by remember { mutableStateOf<Geofence?>(null) }
 
     Column(
         Modifier
@@ -167,7 +169,7 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
                             }
                         },
                     ) {
-                        Surface(onClick = { vm.deletePlace(info, fence) }, shape = CircleShape, color = Color.Transparent, contentColor = c.muted, modifier = Modifier.size(40.dp).semantics { contentDescription = "Remove ${fence.name}" }) {
+                        Surface(onClick = { deletingPlace = fence }, shape = CircleShape, color = Color.Transparent, contentColor = c.muted, modifier = Modifier.size(40.dp).semantics { contentDescription = "Remove ${fence.name}" }) {
                             Box(contentAlignment = Alignment.Center) { Icon(Ic.trash, null, modifier = Modifier.size(18.dp)) }
                         }
                     }
@@ -287,7 +289,7 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
             onDismiss = { addingPlace = false },
         ) { name, radius, icon ->
             addingPlace = false
-            vm.addPlace(info, name, radius, icon)
+            vm.addPlace(info, name, radius ?: 150.0, icon)
         }
     }
     val placeToEdit = editingPlace
@@ -296,7 +298,7 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
             title = "Edit ${placeToEdit.name}",
             subtitle = null,
             initialName = placeToEdit.name,
-            initialRadius = placeToEdit.circle?.radius ?: 150.0,
+            initialRadius = placeToEdit.circle?.radius,
             initialIcon = placeToEdit.icon,
             confirm = "Save",
             onDismiss = { editingPlace = null },
@@ -304,6 +306,22 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
             editingPlace = null
             vm.editPlace(info, placeToEdit, name, radius, icon)
         }
+    }
+    val placeToDelete = deletingPlace
+    if (placeToDelete != null && info != null) {
+        AlertDialog(
+            onDismissRequest = { deletingPlace = null },
+            containerColor = c.surface,
+            title = { Text("Delete ${placeToDelete.name}?", color = c.ink) },
+            text = { Text("It's deleted from Traccar, so it's gone for every car that uses it.", color = c.ink2) },
+            confirmButton = {
+                TextButton(onClick = {
+                    deletingPlace = null
+                    vm.deletePlace(info, placeToDelete)
+                }) { Text("Delete", color = c.warnText) }
+            },
+            dismissButton = { TextButton(onClick = { deletingPlace = null }) { Text("Cancel", color = c.ink2) } },
+        )
     }
     if (odometerDialog && info != null) {
         TextDialog(
@@ -446,15 +464,20 @@ private fun PlaceDialog(
     title: String,
     subtitle: String?,
     initialName: String,
-    initialRadius: Double,
+    /** Null for a place that isn't a circle: its shape is kept and only the name and icon change. */
+    initialRadius: Double?,
     initialIcon: String,
     confirm: String,
     onDismiss: () -> Unit,
-    onSave: (String, Double, String) -> Unit,
+    /** Name, size (null when it wasn't changed) and icon. */
+    onSave: (String, Double?, String) -> Unit,
 ) {
     val c = LocalAppColors.current
-    var name by remember { mutableStateOf(initialName) }
-    var radius by remember { mutableStateOf(initialRadius.coerceIn(50.0, 2000.0)) }
+    var name by rememberSaveable { mutableStateOf(initialName) }
+    var radius by rememberSaveable { mutableStateOf(initialRadius ?: 150.0) }
+    var moved by rememberSaveable { mutableStateOf(false) }
+    // A size set in Traccar's own page can be outside the slider: the slider stretches to include it
+    val range = minOf(50f, (initialRadius ?: 50.0).toFloat())..maxOf(2000f, (initialRadius ?: 2000.0).toFloat())
     var icon by remember { mutableStateOf(initialIcon) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -471,14 +494,21 @@ private fun PlaceDialog(
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = c.accentOutline, unfocusedBorderColor = c.line, cursorColor = c.accentOutline),
                     shape = RoundedCornerShape(14.dp),
                 )
-                Text("Size: ${radius.toInt()} m around it", style = MaterialTheme.typography.labelMedium, color = c.muted)
-                Slider(
-                    value = radius.toFloat(),
-                    onValueChange = { radius = ((it / 25f).roundToInt() * 25).toDouble() },
-                    valueRange = 50f..2000f,
-                    colors = SliderDefaults.colors(thumbColor = c.accentOutline, activeTrackColor = c.accentOutline, inactiveTrackColor = c.line),
-                    modifier = Modifier.semantics { contentDescription = "Size ${radius.toInt()} metres" },
-                )
+                if (initialRadius != null) {
+                    Text("Size: ${radius.toInt()} m around it", style = MaterialTheme.typography.labelMedium, color = c.muted)
+                    Slider(
+                        value = radius.toFloat(),
+                        onValueChange = {
+                            radius = ((it / 25f).roundToInt() * 25).toDouble().coerceIn(range.start.toDouble(), range.endInclusive.toDouble())
+                            moved = true
+                        },
+                        valueRange = range,
+                        colors = SliderDefaults.colors(thumbColor = c.accentOutline, activeTrackColor = c.accentOutline, inactiveTrackColor = c.line),
+                        modifier = Modifier.semantics { contentDescription = "Size ${radius.toInt()} metres" },
+                    )
+                } else {
+                    Text("Its shape was drawn in Traccar, so only its name and icon change here.", style = MaterialTheme.typography.bodySmall, color = c.muted)
+                }
                 Text("Icon", style = MaterialTheme.typography.labelMedium, color = c.muted)
                 Ic.places.entries.chunked(4).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -498,7 +528,7 @@ private fun PlaceDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(name, radius, icon) }, enabled = name.isNotBlank()) { Text(confirm, color = c.accentText, fontWeight = FontWeight.Bold) } },
+        confirmButton = { TextButton(onClick = { onSave(name.trim(), radius.takeIf { moved }, icon) }, enabled = name.isNotBlank()) { Text(confirm, color = c.accentText, fontWeight = FontWeight.Bold) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = c.ink2) } },
     )
 }

@@ -186,6 +186,26 @@ object TrackerCommands {
         Regex("^RESTART\\b|^RESET\\b.*OK") to "Tracker restarting",
     )
 
+    /**
+     * What a known reply says was changed, as the change key and its new state ("SF OK" →
+     * alarm on); null for replies that don't say.
+     */
+    fun replyAbout(reply: String): Pair<String, Boolean>? = when (friendlyReply(reply)) {
+        "Alarm turned on" -> PendingChange.ALARM to true
+        "Alarm turned off" -> PendingChange.ALARM to false
+        "Fuel cut" -> PendingChange.FUEL to true
+        "Fuel restored" -> PendingChange.FUEL to false
+        "Arms automatically after the ignition goes off" -> PendingChange.AUTO_ARM to true
+        "Stopped arming automatically" -> PendingChange.AUTO_ARM to false
+        "Vibration alert turned on" -> AlertKind.VIBRATION.key to true
+        "Vibration alert turned off" -> AlertKind.VIBRATION.key to false
+        "Low battery alert turned on" -> AlertKind.LOW_BATTERY.key to true
+        "Low battery alert turned off" -> AlertKind.LOW_BATTERY.key to false
+        "Unplugged alert turned on" -> AlertKind.UNPLUGGED.key to true
+        "Unplugged alert turned off" -> AlertKind.UNPLUGGED.key to false
+        else -> null
+    }
+
     /** True when a reply says the command didn't work ("ERROR", "FAILED", "INVALID"…). */
     fun isFailure(reply: String): Boolean =
         Regex("\\b(error|fail|failed|failure|invalid|wrong|not support(ed)?|unknown)\\b", RegexOption.IGNORE_CASE)

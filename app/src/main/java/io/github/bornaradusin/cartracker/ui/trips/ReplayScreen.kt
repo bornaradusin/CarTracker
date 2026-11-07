@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.bornaradusin.cartracker.data.Position
 import io.github.bornaradusin.cartracker.ui.AppViewModel
+import io.github.bornaradusin.cartracker.ui.ReplayState
 import io.github.bornaradusin.cartracker.ui.map.MapCamera
 import io.github.bornaradusin.cartracker.ui.map.MapMarker
 import io.github.bornaradusin.cartracker.ui.map.MapStyle
@@ -67,7 +68,7 @@ import kotlin.math.sqrt
 fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: Long, onBack: () -> Unit) {
     val c = LocalAppColors.current
     val density = LocalDensity.current
-    val state by vm.replay.collectAsStateWithLifecycle()
+    val loaded by vm.replay.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val cars by vm.cars.collectAsStateWithLifecycle()
     val car = cars.firstOrNull { it.device.id == deviceId }
@@ -76,6 +77,8 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
 
     LaunchedEffect(deviceId, fromMillis, toMillis) { vm.loadReplay(deviceId, from, to) }
 
+    // Only this trip's data: an earlier trip's may still be there for a moment
+    val state = loaded.takeIf { it.key == "$deviceId/$fromMillis/$toMillis" } ?: ReplayState(loading = true)
     val points = state.points
     var index by remember(points) { mutableIntStateOf(0) }
     var playing by remember(points) { mutableStateOf(points.size > 1) }
@@ -110,7 +113,8 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
             routeSpeeds = speeds,
             routeColor = c.accentOutline,
             showRouteEnds = true,
-            camera = if (route.isNotEmpty()) MapCamera.Fit(route, 1) else null,
+            // Fitted again once the controls panel has its full height, so the route isn't under it
+            camera = if (route.isNotEmpty()) MapCamera.Fit(route, if (state.loading) 0 else panelHeight) else null,
             topPadding = topInset + 72.dp,
             bottomPadding = with(density) { panelHeight.toDp() },
         )

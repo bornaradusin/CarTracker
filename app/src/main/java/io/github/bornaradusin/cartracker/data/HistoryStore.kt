@@ -34,8 +34,11 @@ class HistoryStore(private val api: TraccarApi, private val root: File) {
     private fun dir(kind: String, deviceId: Long): File =
         File(root, "${api.baseUrl.lowercase().hashCode().toUInt()}/$kind/$deviceId").apply { mkdirs() }
 
-    /** Finished means over an hour ago, so late positions from the tracker have arrived. */
-    private fun finished(end: Instant) = end.isBefore(Instant.now().minusSeconds(3_600))
+    /**
+     * Finished means a day ago, so positions a tracker uploads late (after a while out of signal)
+     * have arrived before a piece is kept for good.
+     */
+    private fun finished(end: Instant) = end.isBefore(Instant.now().minusSeconds(86_400))
 
     // ---- battery ----
 
@@ -85,11 +88,39 @@ class HistoryStore(private val api: TraccarApi, private val root: File) {
         val last = end.atZone(zone).toLocalDate()
         val days = generateSequence(first) { it.plusDays(1) }.takeWhile { !it.isAfter(last) }.toList()
         val gate = Semaphore(4)
-        days.map { day -> async { gate.withPermit { dayTrips(deviceId, day) } } }
+        val trips = days.map { day -> async { gate.withPermit { dayTrips(deviceId, day) } } }
             .awaitAll()
             .flatten()
-            .filter { t -> Format.parse(t.startTime)?.let { !it.isBefore(from) && it.isBefore(to) } ?: false }
             .sortedBy { it.startTime }
+        joinAtMidnight(trips).filter { t -> Format.parse(t.startTime)?.let { !it.isBefore(from) && it.isBefore(to) } ?: false }
+    }
+
+    /** A drive across midnight comes back as two trips, one per day: joined into one again. */
+    private fun joinAtMidnight(trips: List<Trip>): List<Trip> {
+        val result = ArrayList<Trip>()
+        trips.forEach { t ->
+            val previous = result.lastOrNull()
+            val end = previous?.let { Format.parse(it.endTime) }
+            val start = Format.parse(t.startTime)
+            val midnight = start?.atZone(zone)?.toLocalDate()?.atStartOfDay(zone)?.toInstant()
+            if (previous != null && end != null && start != null && midnight != null &&
+                !end.isAfter(midnight) && !start.isBefore(midnight) &&
+                end.isAfter(midnight.minusSeconds(180)) && start.isBefore(midnight.plusSeconds(180))
+            ) {
+                result[result.size - 1] = previous.copy(
+                    distance = previous.distance + t.distance,
+                    maxSpeed = maxOf(previous.maxSpeed, t.maxSpeed),
+                    endTime = t.endTime,
+                    duration = previous.duration + t.duration + (start.toEpochMilli() - end.toEpochMilli()),
+                    endAddress = t.endAddress,
+                    endLat = t.endLat,
+                    endLon = t.endLon,
+                )
+            } else {
+                result += t
+            }
+        }
+        return result
     }
 
     private suspend fun dayTrips(deviceId: Long, day: LocalDate): List<Trip> {

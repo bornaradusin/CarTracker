@@ -49,6 +49,7 @@ object CarWidget {
     private data class Parked(val since: Instant?, val checkedAt: Long, val moving: Boolean)
 
     private val parked = ConcurrentHashMap<Long, Parked>()
+    private val addresses = ConcurrentHashMap<Long, Pair<String, Long>>()
     private val mutex = Mutex()
 
     fun hasWidgets(context: Context): Boolean = ids(context).isNotEmpty()
@@ -95,7 +96,14 @@ object CarWidget {
         val since = parked[device.id]?.takeIf { !it.moving }?.since
 
         val fix = p?.takeIf { it.hasFix }
-        val address = fix?.let { runCatching { c.addresses.lookup(it.latitude, it.longitude, it.address) }.getOrNull() }
+        // While driving, the street is looked up at most once a minute (each position is a new spot)
+        val lastAddress = addresses[device.id]
+        val address = if (moving && lastAddress != null && now - lastAddress.second < 60_000) {
+            lastAddress.first
+        } else {
+            fix?.let { runCatching { c.addresses.lookup(it.latitude, it.longitude, it.address) }.getOrNull() }
+                ?.also { addresses[device.id] = it to now }
+        }
         val updated = Format.parse(p?.fixTime) ?: Format.parse(device.lastUpdate)
         val status = when {
             offline -> "Offline"
@@ -142,6 +150,7 @@ object CarWidget {
         val views = RemoteViews(context.packageName, R.layout.widget_car)
         views.setOnClickPendingIntent(R.id.widget_root, Notifier.openAppIntent(context, false))
         if (model == null) {
+            views.setImageViewResource(R.id.widget_pin, R.drawable.car_hatchback)
             views.setTextViewText(R.id.widget_name, context.getString(R.string.app_name))
             views.setTextViewText(R.id.widget_address, context.getString(R.string.widget_placeholder_text))
             views.setViewVisibility(R.id.widget_status, View.GONE)
@@ -153,7 +162,8 @@ object CarWidget {
             views.setTextViewText(R.id.widget_address, model.address)
             show(views, R.id.widget_status, model.status)
             show(views, R.id.widget_battery, model.battery)
-            if (model.batteryLow) views.setTextColor(R.id.widget_battery, ContextCompat.getColor(context, R.color.widget_warn))
+            // Always set: the launcher keeps a colour set earlier until it's changed again
+            views.setTextColor(R.id.widget_battery, ContextCompat.getColor(context, if (model.batteryLow) R.color.widget_warn else R.color.widget_ink))
             show(views, R.id.widget_updated, model.updated)
         }
         runCatching { AppWidgetManager.getInstance(context).updateAppWidget(ids, views) }

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -124,11 +125,11 @@ private fun MainShell(vm: AppViewModel, openAlertsSignal: Int) {
                 }
                 composable("alerts") { AlertsScreen(vm) }
                 composable("more") { MoreScreen(vm, onOpenAlertTypes = { nav.navigate("alert-types") }) }
-                composable("controls") { ControlsScreen(vm, onBack = { nav.popBackStack() }) }
-                composable("alert-types") { AlertTypesScreen(vm, onBack = { nav.popBackStack() }) }
-                composable("battery") { BatteryScreen(vm, onBack = { nav.popBackStack() }) }
-                composable("stats") { StatsScreen(vm, onBack = { nav.popBackStack() }) }
-                composable("heatmap") { HeatmapScreen(vm, onBack = { nav.popBackStack() }) }
+                composable("controls") { ControlsScreen(vm, onBack = { nav.back() }) }
+                composable("alert-types") { AlertTypesScreen(vm, onBack = { nav.back() }) }
+                composable("battery") { BatteryScreen(vm, onBack = { nav.back() }) }
+                composable("stats") { StatsScreen(vm, onBack = { nav.back() }) }
+                composable("heatmap") { HeatmapScreen(vm, onBack = { nav.back() }) }
                 composable(
                     "replay/{id}/{from}/{to}",
                     arguments = listOf(
@@ -143,7 +144,7 @@ private fun MainShell(vm: AppViewModel, openAlertsSignal: Int) {
                         deviceId = args?.getLong("id") ?: 0L,
                         fromMillis = args?.getLong("from") ?: 0L,
                         toMillis = args?.getLong("to") ?: 0L,
-                        onBack = { nav.popBackStack() },
+                        onBack = { nav.back() },
                     )
                 }
             }
@@ -167,7 +168,7 @@ private fun MainShell(vm: AppViewModel, openAlertsSignal: Int) {
                         onClick = { nav.goTab(tab.route) },
                         icon = {
                             if (tab.route == "alerts" && unread > 0) {
-                                BadgedBox(badge = { Badge(containerColor = c.warn) { Text(if (unread > 99) "99+" else unread.toString()) } }) {
+                                BadgedBox(badge = { Badge(containerColor = c.warn, contentColor = Color.White) { Text(if (unread > 99) "99+" else unread.toString()) } }) {
                                     Icon(tab.icon, null, modifier = Modifier.size(22.dp))
                                 }
                             } else {
@@ -211,6 +212,11 @@ private fun MainShell(vm: AppViewModel, openAlertsSignal: Int) {
             confirmButton = { TextButton(onClick = { vm.dismissReply() }) { Text("OK", color = c.accentText) } },
         )
     }
+}
+
+/** Back from a screen, once: a second tap during the slide-out would also close the screen under it. */
+private fun NavHostController.back() {
+    if (currentBackStackEntry?.lifecycle?.currentState == androidx.lifecycle.Lifecycle.State.RESUMED) popBackStack()
 }
 
 private fun NavHostController.goTab(route: String) {

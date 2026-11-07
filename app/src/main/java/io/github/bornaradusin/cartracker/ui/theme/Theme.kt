@@ -93,8 +93,9 @@ fun appColors(dark: Boolean, accent: Accent): AppColors = if (dark) {
         muted = Color(0xFF5B6676),
         line = Color(0xFFE3E8EE),
         divider = Color(0xFFEEF1F5),
-        accent = accent.light,
-        onAccent = accent.onLight,
+        // A white or near-white app colour would vanish on white cards: selections use its outline shade
+        accent = if (Palette.isNearWhite(accent.light)) accent.outlineLight else accent.light,
+        onAccent = if (Palette.isNearWhite(accent.light)) Palette.onColor(accent.outlineLight) else accent.onLight,
         accentTint = accent.tintLight,
         accentText = if (Palette.isLight(accent.light)) accent.outlineLight else accent.light,
         accentOutline = accent.outlineLight,

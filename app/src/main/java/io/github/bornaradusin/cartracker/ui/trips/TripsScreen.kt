@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,7 +67,7 @@ fun TripsScreen(
     val car by vm.selectedCar.collectAsStateWithLifecycle()
     val cars by vm.cars.collectAsStateWithLifecycle()
     val state by vm.trips.collectAsStateWithLifecycle()
-    var date by remember { mutableStateOf(LocalDate.now()) }
+    var date by rememberSaveable { mutableStateOf(LocalDate.now()) }
     var carMenu by remember { mutableStateOf(false) }
     val deviceId = car?.device?.id ?: 0L
 
@@ -204,13 +205,13 @@ private fun TripCard(trip: Trip, dayRoute: List<Position>, onClick: () -> Unit) 
             t != null && !t.isBefore(start) && !t.isAfter(end) && p.hasFix
         }
     }
-    val places by produceState(initialValue = listOfNotNull(trip.startAddress, trip.endAddress).joinToString(" → ").ifBlank { null }, trip) {
-        if (value == null || trip.startAddress == null || trip.endAddress == null) {
-            val lookup = context.container.addresses
-            val from = lookup.lookup(trip.startLat, trip.startLon, trip.startAddress)?.substringAfterLast(", ")
-            val to = lookup.lookup(trip.endLat, trip.endLon, trip.endAddress)?.substringAfterLast(", ")
-            value = listOfNotNull(from, to).joinToString(" → ").ifBlank { null }
-        }
+    // The area of each end ("Raheen → Castletroy"), the same way whether the server or the phone named it
+    val places by produceState<String?>(initialValue = null, trip) {
+        val lookup = context.container.addresses
+        fun area(text: String?) = text?.takeUnless { Regex("^-?\\d+\\.\\d+, ?-?\\d+\\.\\d+$").matches(it) }?.substringAfterLast(", ")
+        val from = area(lookup.lookup(trip.startLat, trip.startLon, trip.startAddress))
+        val to = area(lookup.lookup(trip.endLat, trip.endLon, trip.endAddress))
+        value = listOfNotNull(from, to).joinToString(" → ").ifBlank { null }
     }
     Surface(onClick = onClick, shape = RoundedCornerShape(20.dp), color = c.surface, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {

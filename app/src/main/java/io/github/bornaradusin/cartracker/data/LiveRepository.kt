@@ -21,6 +21,7 @@ import kotlinx.serialization.json.jsonObject
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import io.github.bornaradusin.cartracker.util.Format
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -92,9 +93,16 @@ class LiveRepository(private val api: TraccarApi, private val scope: CoroutineSc
         list.forEach { (device, raw) -> rawDevices[device.id] = raw }
         _devices.value = list.map { it.first }.sortedBy { it.name.lowercase() }
         val known = _positions.value
-        // A tracker's latest "position" may be its reply to a command: keep the real one seen before
+        // A tracker's latest "position" may be its reply to a command: use the real one before it
         _positions.value = api.positions().associateBy { it.deviceId }.mapValues { (id, p) ->
-            if (p.attributes.containsKey("result")) known[id] ?: p else p
+            if (!p.attributes.containsKey("result")) {
+                p
+            } else {
+                known[id] ?: runCatching {
+                    val at = Format.parse(p.serverTime) ?: java.time.Instant.now()
+                    api.route(id, at.minusSeconds(86_400), at.plusSeconds(60)).lastOrNull { !it.attributes.containsKey("result") }
+                }.getOrNull() ?: p
+            }
         }
     }
 

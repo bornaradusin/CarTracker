@@ -173,7 +173,7 @@ def main():
     swipe(540, card_y, 540, card_y - 1400, ms=500)
 
     # Battery history, from the battery tile
-    tap("Battery history")
+    tap("Battery")
     shot("battery", settle=5)
     shell("input", "keyevent", "4")
     time.sleep(2)

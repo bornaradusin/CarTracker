@@ -76,6 +76,12 @@ object Format {
     fun speedKmh(knots: Double): String = "${(knots * 1.852).roundToInt()} km/h"
 
     /** "6 h 22 m", "33 min", "45 s". */
+    /** A total time, such as a month's driving: "71 h 20 m" rather than "2 days". */
+    fun hours(millis: Long): String {
+        val totalMinutes = millis / 60_000
+        return if (totalMinutes < 60) "$totalMinutes min" else "${totalMinutes / 60} h ${totalMinutes % 60} m"
+    }
+
     fun duration(millis: Long): String {
         val totalMinutes = millis / 60_000
         return when {
@@ -87,9 +93,9 @@ object Format {
     }
 
     /** "just now", "5 min ago", "2 h ago", "3 days ago". */
-    fun ago(instant: Instant?): String {
+    fun ago(instant: Instant?, now: Instant = Instant.now()): String {
         if (instant == null) return "never"
-        val millis = Instant.now().toEpochMilli() - instant.toEpochMilli()
+        val millis = now.toEpochMilli() - instant.toEpochMilli()
         return when {
             millis < 60_000 -> "just now"
             millis < 3_600_000 -> "${millis / 60_000} min ago"

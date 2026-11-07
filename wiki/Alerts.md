@@ -45,3 +45,5 @@ With live alerts off, the app checks for new alerts every 15 minutes instead.
 | Started and stopped moving | Every trip's start and end (off at first) |
 
 The app's own **low battery warning** is set separately, per car, under [Battery](Battery#low-battery-warning).
+
+Tap any alert for its details: the full text (for example the tracker's whole answer to **Locate now** or **Check status**), when and where it happened, **Copy**, and **Open in Maps**.

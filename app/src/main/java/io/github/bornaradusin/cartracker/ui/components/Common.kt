@@ -7,6 +7,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -85,14 +86,21 @@ fun SectionTitle(text: String) {
 @Composable
 fun Toggle(checked: Boolean, onChange: (Boolean) -> Unit, label: String, enabled: Boolean = true) {
     val c = LocalAppColors.current
-    val track by animateColorAsState(if (checked) c.accentOutline.takeIf { Palette.isNearWhite(c.accent) } ?: c.accent else if (c.dark) Color(0xFF3A4558) else Color(0xFFC9D1DB), label = "track")
+    // On is the app colour; a near-white one would match the white knob, so it gets a grey that stands out
+    val on = when {
+        !Palette.isNearWhite(c.accent) -> c.accent
+        c.dark -> Color(0xFF8A97AB)
+        else -> c.accentOutline
+    }
+    val track by animateColorAsState(if (checked) on else if (c.dark) Color(0xFF3A4558) else Color(0xFFC9D1DB), label = "track")
     val knob by animateDpAsState(if (checked) 24.dp else 4.dp, label = "knob")
     Box(
         Modifier
             .size(52.dp, 32.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(track.copy(alpha = if (enabled) 1f else 0.4f))
-            .clickable(enabled = enabled, role = Role.Switch) { onChange(!checked) }
+            // Toggleable, so TalkBack says whether it's on or off
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange)
             .semantics { contentDescription = label },
     ) {
         Box(

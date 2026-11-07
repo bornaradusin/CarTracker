@@ -177,7 +177,7 @@ private fun Totals(state: StatsState?) {
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Total("Distance", state?.let { Format.distance(it.meters) } ?: "–")
-        Total("Driving", state?.let { if (it.millis == 0L) "0 min" else Format.duration(it.millis) } ?: "–")
+        Total("Driving", state?.let { Format.hours(it.millis) } ?: "–")
         Total("Trips", state?.trips?.toString() ?: "–")
         Total("Top speed", state?.topKnots?.takeIf { it > 0 }?.let { Format.speedKmh(it).removeSuffix(" km/h") } ?: "–")
     }
@@ -202,7 +202,7 @@ private fun Bars(bars: List<StatsBar>, showTime: Boolean, period: StatsPeriod) {
         val selected = bars.getOrNull(picked)
         Text(
             when {
-                selected != null -> "${selected.label}: ${Format.distance(selected.meters)} · ${Format.duration(selected.millis)} · ${selected.trips} trip${if (selected.trips == 1) "" else "s"}"
+                selected != null -> "${selected.label}: ${Format.distance(selected.meters)} · ${Format.hours(selected.millis)} · ${selected.trips} trip${if (selected.trips == 1) "" else "s"}"
                 values.all { it == 0.0 } -> "No trips"
                 else -> "Tap a bar for its numbers"
             },
@@ -222,7 +222,10 @@ private fun Bars(bars: List<StatsBar>, showTime: Boolean, period: StatsPeriod) {
                         .weight(1f)
                         .fillMaxHeight()
                         .clickable { picked = if (picked == i) -1 else i }
-                        .semantics { contentDescription = bars[i].label },
+                        .semantics {
+                            val bar = bars[i]
+                            contentDescription = "${bar.label}: ${Format.distance(bar.meters)}, ${Format.hours(bar.millis)} driving, ${bar.trips} trips"
+                        },
                     contentAlignment = Alignment.BottomCenter,
                 ) {
                     Box(

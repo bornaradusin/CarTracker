@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -57,7 +58,8 @@ fun LoginScreen(vm: AppViewModel) {
     var email by rememberSaveable { mutableStateOf(settings.email) }
     var password by rememberSaveable { mutableStateOf("") }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
-    var working by rememberSaveable { mutableStateOf(false) }
+    // Not saved: after a rotation the sign-in in progress is gone, so the button must be usable again
+    var working by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun submit() {

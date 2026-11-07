@@ -35,7 +35,15 @@ class AlertService : Service() {
         super.onCreate()
         val names = container.live.devices.value.map { it.name }
         val type = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
-        ServiceCompat.startForeground(this, Notifier.LIVE_NOTIFICATION_ID, Notifier.liveNotification(this, names), type)
+        // Android may refuse a foreground service when it restarts this one in the background;
+        // then the 15-minute check takes over until the app is opened again
+        val started = runCatching {
+            ServiceCompat.startForeground(this, Notifier.LIVE_NOTIFICATION_ID, Notifier.liveNotification(this, names), type)
+        }.isSuccess
+        if (!started) {
+            stopSelf()
+            return
+        }
 
         val c = container
         c.live.acquire(HOLDER)

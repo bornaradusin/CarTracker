@@ -48,6 +48,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -108,7 +109,7 @@ data class TripsState(
     val error: String? = null,
 )
 
-data class ReplayState(val loading: Boolean = true, val points: List<Position> = emptyList(), val error: String? = null)
+data class ReplayState(val key: String = "", val loading: Boolean = true, val points: List<Position> = emptyList(), val error: String? = null)
 
 data class BatteryState(
     val deviceId: Long = 0,
@@ -220,6 +221,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val now = MutableStateFlow(Instant.now())
 
+    /** Ticks every 30 seconds, so "parked for" and "last seen" keep moving on screen. */
+    val clock: StateFlow<Instant> = now.asStateFlow()
+
     val cars: StateFlow<List<CarInfo>> = combine(
         combine(devices, positions, settings) { d, p, s -> Triple(d, p, s) },
         combine(addresses, todayMeters, parkedSince) { a, t, ps -> Triple(a, t, ps) },
@@ -272,7 +276,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             settings.map { it.alertKinds }.distinctUntilChanged().drop(1).collect { refreshAlertsQuietly() }
         }
         viewModelScope.launch {
-            live.updates.debounce(20_000).collect {
+            // Every 20 s at most while reports keep coming (a debounce would wait for the drive to end)
+            live.updates.sample(20_000).collect {
                 val id = selectedId.value
                 if (id != 0L) refreshDay(id)
                 refreshAlertsQuietly()
@@ -331,6 +336,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             null
         } catch (e: ApiException) {
             if (e.code == 401) "Wrong email or password." else e.message ?: "Couldn't sign in."
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             "Couldn't reach the server. Check the address and your connection."
         }
@@ -338,15 +345,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun signOut() {
         viewModelScope.launch {
-            api.signOut()
+            // Locally first, so signing out works without a connection; then revoke the session
+            val session = c.api.sessionForSignOut()
             c.settings.signedOut()
             _alerts.value = AlertsState()
             _trips.value = TripsState()
+            _replay.value = ReplayState()
+            _battery.value = BatteryState()
+            _stats.value = StatsState()
+            _heat.value = HeatState()
             _geofences.value = emptyMap()
             c.commands.clear()
             addresses.value = emptyMap()
+            eventPlaces.value = emptyMap()
             todayMeters.value = emptyMap()
             parkedSince.value = emptyMap()
+            ignitionChanges.value = emptyMap()
+            c.scope.launch { runCatching { api.signOut(session) } }
         }
     }
 
@@ -375,7 +390,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         // A change the tracker confirmed after its last report is newer than what that report says
         val reportedAt = (Format.parse(p?.serverTime) ?: Format.parse(p?.fixTime))?.toEpochMilli() ?: 0L
         val reported = p?.armed
-        val manual = prefs.manualArmed?.takeIf { prefs.manualAt > (ignitionChangedAt ?: 0L) }
+        // A drive since the change (the ignition went on or off, or the car parked again) replaces it
+        val lastCycle = maxOf(ignitionChangedAt ?: 0L, parkedFrom?.toEpochMilli() ?: 0L)
+        val manual = prefs.manualArmed?.takeIf { prefs.manualAt > lastCycle }
         val confirmedArmed = manual?.takeIf { prefs.manualAt >= reportedAt }
         val fuelConfirmed = prefs.fuelCut?.takeIf { prefs.fuelAt >= reportedAt }
         val armed = when {
@@ -540,6 +557,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 },
             )
             return null
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             say("Couldn't reach the server.")
             return null
@@ -567,7 +586,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Ends a live link early by removing the temporary account Traccar made for it. Only admins can. */
     private suspend fun removeLiveLink(car: CarInfo): Boolean {
-        val email = "${settings.value.email}:${car.device.uniqueId}"
+        // Traccar names the link's account after the sharing user's email (which may differ from the sign-in name)
+        val me = runCatching { api.sessionFromToken().email }.getOrNull()?.takeIf { it.isNotBlank() } ?: settings.value.email
+        val email = "$me:${car.device.uniqueId}"
         val share = runCatching { api.users() }.getOrNull()?.firstOrNull { it.email.equals(email, ignoreCase = true) } ?: return false
         return runCatching { api.deleteUser(share.id) }.isSuccess
     }
@@ -610,14 +631,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun editPlace(car: CarInfo, fence: Geofence, name: String, radius: Double, icon: String) = viewModelScope.launch {
+    /** [radius] null keeps the place's size (and any shape that isn't a circle). */
+    fun editPlace(car: CarInfo, fence: Geofence, name: String, radius: Double?, icon: String) = viewModelScope.launch {
         val circle = fence.circle
-        if (circle == null) {
-            say("${fence.name} isn't a circle, so it can only be changed in Traccar.")
-            return@launch
-        }
+        val area = if (circle != null && radius != null) "CIRCLE (${circle.latitude} ${circle.longitude}, ${radius.toInt()})" else null
         try {
-            api.updateGeofence(fence.id, name.trim().ifBlank { fence.name }, circle.latitude, circle.longitude, radius, icon)
+            api.updateGeofence(fence.id, name.trim().ifBlank { fence.name }, area, icon)
+            // Other cars may share the place
+            _geofences.value.keys.filter { it != car.device.id }.forEach { loadGeofences(it) }
             loadGeofences(car.device.id)
         } catch (e: ApiException) {
             say(if (e.code == 400 || e.code == 403) "Your account can't change places on this server." else e.message ?: "Couldn't save ${fence.name}.")
@@ -629,13 +650,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun deletePlace(car: CarInfo, fence: Geofence) = viewModelScope.launch {
         try {
             api.deleteGeofence(fence.id)
-            loadGeofences(car.device.id)
+            // Gone for every car that had it
+            (_geofences.value.keys + car.device.id).forEach { loadGeofences(it) }
         } catch (e: Exception) {
             say("Couldn't remove ${fence.name}.")
         }
     }
 
     // ---------- alerts ----------
+
+    /** Where the car was for an alert, for its details. */
+    suspend fun alertPosition(event: Event): Position? =
+        if (event.positionId == 0L) null else runCatching { api.positionsById(listOf(event.positionId)).firstOrNull() }.getOrNull()
 
     fun loadAlerts() = viewModelScope.launch { fetchAlerts(showLoading = true) }
 
@@ -702,25 +728,43 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- trips ----------
 
-    fun loadTrips(deviceId: Long, date: LocalDate) = viewModelScope.launch {
-        _trips.value = TripsState(deviceId = deviceId, date = date, loading = true)
-        val from = Format.startOfDay(date)
-        val to = minOf(Format.startOfDay(date.plusDays(1)), Instant.now())
-        try {
-            val trips = api.trips(deviceId, from, to)
-            val route = if (trips.isNotEmpty()) runCatching { api.route(deviceId, from, to) }.getOrDefault(emptyList()) else emptyList()
-            _trips.value = TripsState(deviceId, date, false, trips, route)
-        } catch (e: Exception) {
-            _trips.value = TripsState(deviceId, date, false, error = "Couldn't load trips.")
+    private var tripsJob: Job? = null
+
+    fun loadTrips(deviceId: Long, date: LocalDate) {
+        tripsJob?.cancel()
+        tripsJob = viewModelScope.launch {
+            _trips.value = TripsState(deviceId = deviceId, date = date, loading = true)
+            val from = Format.startOfDay(date)
+            val to = minOf(Format.startOfDay(date.plusDays(1)), Instant.now())
+            _trips.value = try {
+                // A day at a time (the 25-hour day in two halves), so trips follow the ignition
+                val trips = c.history.trips(deviceId, from, to)
+                val route = if (trips.isNotEmpty()) runCatching { api.route(deviceId, from, to) }.getOrDefault(emptyList()) else emptyList()
+                TripsState(deviceId, date, false, trips, route)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                TripsState(deviceId, date, false, error = "Couldn't load trips.")
+            }
         }
     }
 
-    fun loadReplay(deviceId: Long, from: Instant, to: Instant) = viewModelScope.launch {
-        _replay.value = ReplayState(loading = true)
-        _replay.value = try {
-            ReplayState(loading = false, points = api.route(deviceId, from, to).filter { it.hasFix })
-        } catch (e: Exception) {
-            ReplayState(loading = false, error = "Couldn't load this trip.")
+    private var replayJob: Job? = null
+
+    fun loadReplay(deviceId: Long, from: Instant, to: Instant) {
+        val key = "$deviceId/${from.toEpochMilli()}/${to.toEpochMilli()}"
+        // Coming back to the same trip (rotation) keeps what's loaded
+        if (_replay.value.key == key && !_replay.value.loading && _replay.value.error == null) return
+        replayJob?.cancel()
+        replayJob = viewModelScope.launch {
+            _replay.value = ReplayState(key = key, loading = true)
+            _replay.value = try {
+                ReplayState(key = key, loading = false, points = api.route(deviceId, from, to).filter { it.hasFix })
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ReplayState(key = key, loading = false, error = "Couldn't load this trip.")
+            }
         }
     }
 

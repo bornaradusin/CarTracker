@@ -22,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +35,7 @@ import io.github.bornaradusin.cartracker.ui.LiveLink
 import io.github.bornaradusin.cartracker.ui.theme.Ic
 import io.github.bornaradusin.cartracker.ui.theme.LocalAppColors
 import io.github.bornaradusin.cartracker.util.Format
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 
 /** Share the car: where it is now, or a live link that others can follow in a browser for a while. */
@@ -43,7 +43,6 @@ import kotlinx.coroutines.launch
 internal fun ShareDialog(vm: AppViewModel, info: CarInfo, onSendSpot: () -> Unit, onDismiss: () -> Unit) {
     val c = LocalAppColors.current
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var working by remember { mutableStateOf(false) }
     val running = vm.currentLiveLink(info)
     val name = info.device.name
@@ -54,7 +53,7 @@ internal fun ShareDialog(vm: AppViewModel, info: CarInfo, onSendSpot: () -> Unit
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!working) onDismiss() },
         containerColor = c.surface,
         title = { Text("Share $name", color = c.ink) },
         text = {
@@ -80,7 +79,8 @@ internal fun ShareDialog(vm: AppViewModel, info: CarInfo, onSendSpot: () -> Unit
                             Surface(
                                 onClick = {
                                     working = true
-                                    scope.launch {
+                                    // In the app's scope, so closing the dialog or rotating doesn't lose a link the server made
+                                    vm.viewModelScope.launch {
                                         val link = vm.liveLink(info, hours)
                                         working = false
                                         if (link != null) send(link)
@@ -100,7 +100,7 @@ internal fun ShareDialog(vm: AppViewModel, info: CarInfo, onSendSpot: () -> Unit
                 if (working) LinearProgressIndicator(color = c.accentOutline, trackColor = c.line, modifier = Modifier.fillMaxWidth())
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = c.ink2) } },
+        confirmButton = { TextButton(onClick = onDismiss, enabled = !working) { Text("Close", color = c.ink2) } },
     )
 }
 
