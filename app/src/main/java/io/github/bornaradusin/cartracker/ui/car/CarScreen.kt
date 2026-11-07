@@ -297,6 +297,7 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
                     info = info,
                     busy = busy,
                     alarmPending = pendingChanges[info.device.id]?.key == PendingChange.ALARM,
+                    fuelPending = pendingChanges[info.device.id]?.key == PendingChange.FUEL,
                     onImmobiliser = { fuelDialog = true },
                     onAlarm = { vm.send(info, if (info.armed) Action.DISARM else Action.ARM) },
                     onDirections = {
@@ -355,6 +356,7 @@ private fun CarCard(
     info: CarInfo,
     busy: String?,
     alarmPending: Boolean,
+    fuelPending: Boolean,
     onImmobiliser: () -> Unit,
     onAlarm: () -> Unit,
     onDirections: () -> Unit,
@@ -442,12 +444,12 @@ private fun CarCard(
         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
             QuickAction(
                 icon = Ic.lock,
-                label = if (info.immobilised) "Immobilised" else "Immobilise",
+                label = if (fuelPending) "Confirming…" else if (info.immobilised) "Immobilised" else "Immobilise",
                 tile = if (info.immobilised) c.warn else c.surface2,
                 iconColor = if (info.immobilised) Color.White else c.ink,
                 labelColor = if (info.immobilised) c.warnText else c.ink,
                 bold = info.immobilised,
-                working = busy != null && (busy.contains("fuel", ignoreCase = true)),
+                working = fuelPending || (busy != null && busy.contains("fuel", ignoreCase = true)),
                 onClick = onImmobiliser,
             )
             QuickAction(

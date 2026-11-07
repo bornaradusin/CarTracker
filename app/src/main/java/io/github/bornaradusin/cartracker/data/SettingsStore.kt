@@ -39,6 +39,9 @@ data class DevicePrefs(
     val lowVoltage: Double = 11.8,
     /** A low-battery warning was sent and the battery hasn't recovered since. */
     val batteryWarned: Boolean = false,
+    /** The fuel state the tracker last confirmed (true = cut), and when. */
+    val fuelCut: Boolean? = null,
+    val fuelAt: Long = 0,
     /** The last live link made for this car, and when it ends. */
     val shareToken: String = "",
     val shareUntil: Long = 0,

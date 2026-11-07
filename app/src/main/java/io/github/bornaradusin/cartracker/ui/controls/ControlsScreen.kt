@@ -102,7 +102,7 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Box(Modifier.size(8.dp).clip(CircleShape).background(if (info.immobilised) c.warnText else c.good))
                     Text(
-                        if (info.immobilised) "Fuel cut" else "Fuel on",
+                        if (pending?.key == PendingChange.FUEL) waitingHint else if (info.immobilised) "Fuel cut" else "Fuel on",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = if (info.immobilised) c.warnText else c.good,
                     )

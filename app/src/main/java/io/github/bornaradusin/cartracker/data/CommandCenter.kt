@@ -25,6 +25,7 @@ data class PendingChange(val key: String, val on: Boolean) {
     companion object {
         const val ALARM = "alarm"
         const val AUTO_ARM = "auto_arm"
+        const val FUEL = "fuel"
     }
 }
 
@@ -91,6 +92,7 @@ class CommandCenter(
             return@launch
         }
         val change = when (action) {
+            Action.CUT_NOW, Action.RESTORE -> PendingChange(PendingChange.FUEL, action == Action.CUT_NOW)
             Action.ARM, Action.DISARM -> PendingChange(PendingChange.ALARM, action == Action.ARM)
             Action.AUTO_ARM_ON, Action.AUTO_ARM_OFF -> PendingChange(PendingChange.AUTO_ARM, action == Action.AUTO_ARM_ON)
             Action.VIBRATION_ON, Action.VIBRATION_OFF -> PendingChange(AlertKind.VIBRATION.key, action == Action.VIBRATION_ON)
@@ -104,7 +106,8 @@ class CommandCenter(
             if (deliver(target, action.label, command, quiet) && change != null) applyChange(target, change)
             return@launch
         }
-        if (!target.online) {
+        // Fuel can wait for the tracker to reconnect (Traccar keeps the command); the rest can't
+        if (!target.online && change.key != PendingChange.FUEL) {
             say("${target.name} is offline, so nothing was changed. Try again once it's back online.")
             return@launch
         }
@@ -154,6 +157,9 @@ class CommandCenter(
                 it.copy(manualArmed = change.on, manualAt = System.currentTimeMillis())
             }
             PendingChange.AUTO_ARM -> settings.updateDevice(target.id) { it.copy(autoArm = change.on) }
+            PendingChange.FUEL -> settings.updateDevice(target.id) {
+                it.copy(fuelCut = change.on, fuelAt = System.currentTimeMillis())
+            }
             else -> AlertKind.entries.firstOrNull { it.key == change.key }?.let { settings.setAlertKind(it, change.on) }
         }
     }
@@ -183,7 +189,8 @@ class CommandCenter(
                     else "${target.name} is offline. It gets this when it next connects.",
                 )
             }
-            watchReply(target, label, sentAt, if (now) 90_000L else 15 * 60_000L, change)
+            // A setting sent straight away is sent again if the tracker doesn't answer: they're safe to repeat
+            watchReply(target, label, sentAt, if (now) 100_000L else 15 * 60_000L, change, toSend.takeIf { now && change != null })
             true
         } catch (e: ApiException) {
             say(
@@ -206,15 +213,29 @@ class CommandCenter(
      * event) and shows it. A [change] is saved only once the tracker confirms it; with no answer
      * in time, nothing changes.
      */
-    private fun watchReply(target: CommandTarget, label: String, sentAt: Instant, windowMs: Long, change: PendingChange?) {
+    private fun watchReply(
+        target: CommandTarget,
+        label: String,
+        sentAt: Instant,
+        windowMs: Long,
+        change: PendingChange?,
+        resend: JsonObject?,
+    ) {
         val id = target.id
         watchers.remove(id)?.cancel()
         watchers[id] = scope.launch {
             try {
                 val from = sentAt.minusSeconds(5)
                 val until = System.currentTimeMillis() + windowMs
+                var resent = 0
                 while (isActive && System.currentTimeMillis() < until) {
                     delay(3_000)
+                    // Trackers asleep or between connections can miss a command: try again at 20 and 50 seconds
+                    val waited = System.currentTimeMillis() - sentAt.toEpochMilli()
+                    if (resend != null && resent < RESEND_AFTER.size && waited >= RESEND_AFTER[resent]) {
+                        resent++
+                        runCatching { api.sendCommand(resend) }
+                    }
                     val event = runCatching { api.events(listOf(id), from, Instant.now().plusSeconds(60)) }
                         .getOrNull()
                         ?.lastOrNull { it.type == "commandResult" }
@@ -230,7 +251,12 @@ class CommandCenter(
                     else if (change == null || failed) say("${target.name}: $shown")
                     return@launch
                 }
-                if (change != null && isActive) say("${target.name} didn't confirm, so nothing was changed.")
+                if (change != null && isActive) {
+                    say(
+                        if (change.key == PendingChange.FUEL) "${target.name} didn't confirm. Check it's online, then try again."
+                        else "${target.name} didn't confirm, so nothing was changed.",
+                    )
+                }
             } finally {
                 if (change != null) _pending.update { it - id }
             }
@@ -239,5 +265,9 @@ class CommandCenter(
 
     private fun say(message: String) {
         _messages.tryEmit(message)
+    }
+
+    private companion object {
+        val RESEND_AFTER = longArrayOf(20_000, 50_000)
     }
 }

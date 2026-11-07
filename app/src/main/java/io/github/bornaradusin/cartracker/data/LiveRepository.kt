@@ -91,7 +91,11 @@ class LiveRepository(private val api: TraccarApi, private val scope: CoroutineSc
         rawDevices.clear()
         list.forEach { (device, raw) -> rawDevices[device.id] = raw }
         _devices.value = list.map { it.first }.sortedBy { it.name.lowercase() }
-        _positions.value = api.positions().associateBy { it.deviceId }
+        val known = _positions.value
+        // A tracker's latest "position" may be its reply to a command: keep the real one seen before
+        _positions.value = api.positions().associateBy { it.deviceId }.mapValues { (id, p) ->
+            if (p.attributes.containsKey("result")) known[id] ?: p else p
+        }
     }
 
     /** A car's details changed in the app (name, icon…): show it straight away. */
@@ -166,6 +170,9 @@ class LiveRepository(private val api: TraccarApi, private val scope: CoroutineSc
             val current = _positions.value.toMutableMap()
             array.forEach { element ->
                 val position = runCatching { AppJson.decodeFromJsonElement<Position>(element) }.getOrNull() ?: return@forEach
+                // A tracker's reply to a command comes in as a "position" with only the reply in it, no
+                // ignition, battery or fuel state: keep the last real one (the reply shows as an alert)
+                if (position.attributes.containsKey("result") && current.containsKey(position.deviceId)) return@forEach
                 current[position.deviceId] = position
             }
             _positions.value = current

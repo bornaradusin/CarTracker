@@ -16,6 +16,8 @@ The tile shows **Fuel on**, or **Fuel cut** in orange while the car can't start.
 - **Cut fuel safely**: waits until the car is below 20 km/h. Only shown when the tracker supports it.
 - **Restore fuel**: the car can start again.
 
+One tap is enough: the button shows **Confirming…** until the tracker answers, then switches to the new state straight away. A tracker that's asleep or between connections can miss a command, so if it hasn't answered, the app sends it again after 20 and 50 seconds. If the car is offline, Traccar keeps the command and the tracker gets it when it reconnects.
+
 **Ask for fingerprint** (on at first): cutting or restoring fuel asks for your fingerprint, face or the phone's PIN first, so it can't happen by accident or by someone else picking up your phone. Turn it off in the same card. Phones with no screen lock skip it.
 
 ## Alarm

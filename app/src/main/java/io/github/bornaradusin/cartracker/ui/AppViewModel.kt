@@ -372,9 +372,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             moving -> CarStatus.MOVING
             else -> CarStatus.PARKED
         }
+        // A change the tracker confirmed after its last report is newer than what that report says
+        val reportedAt = (Format.parse(p?.serverTime) ?: Format.parse(p?.fixTime))?.toEpochMilli() ?: 0L
         val reported = p?.armed
         val manual = prefs.manualArmed?.takeIf { prefs.manualAt > (ignitionChangedAt ?: 0L) }
+        val confirmedArmed = manual?.takeIf { prefs.manualAt >= reportedAt }
+        val fuelConfirmed = prefs.fuelCut?.takeIf { prefs.fuelAt >= reportedAt }
         val armed = when {
+            confirmedArmed != null -> confirmedArmed
             reported != null -> reported
             manual != null -> manual
             p?.ignition == true -> false
@@ -394,7 +399,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             status = status,
             updated = Format.parse(p?.fixTime) ?: Format.parse(d.lastUpdate),
             ignition = p?.ignition,
-            immobilised = p?.blocked == true,
+            immobilised = fuelConfirmed ?: p?.blocked ?: prefs.fuelCut ?: false,
             armed = armed,
             armedInferred = reported == null,
             todayMeters = today,

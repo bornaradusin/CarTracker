@@ -14,6 +14,7 @@ import io.github.bornaradusin.cartracker.data.PendingChange
 import io.github.bornaradusin.cartracker.data.Position
 import io.github.bornaradusin.cartracker.data.TrackerCommands
 import io.github.bornaradusin.cartracker.data.TrackerKind
+import io.github.bornaradusin.cartracker.util.Format
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -82,8 +83,12 @@ class AlarmTileService : TileService() {
         val p = positions[device.id]
         val prefs = settings.prefs(device.id)
         val kind = TrackerCommands.kind(prefs, p)
-        // The tracker's own report when it sends one; otherwise the last change it confirmed
-        val armed = p?.armed ?: prefs.manualArmed ?: (kind == TrackerKind.MICODUS && prefs.autoArm && p?.ignition == false)
+        // The last change the tracker confirmed, unless it has reported since; then its report
+        val reportedAt = (Format.parse(p?.serverTime) ?: Format.parse(p?.fixTime))?.toEpochMilli() ?: 0L
+        val armed = prefs.manualArmed?.takeIf { prefs.manualAt >= reportedAt }
+            ?: p?.armed
+            ?: prefs.manualArmed
+            ?: (kind == TrackerKind.MICODUS && prefs.autoArm && p?.ignition == false)
         val target = CommandTarget(device.id, device.name, kind, device.online || device.status == null)
         return State(
             target = target,
