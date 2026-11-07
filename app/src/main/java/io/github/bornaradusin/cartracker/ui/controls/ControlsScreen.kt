@@ -19,7 +19,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -183,12 +185,28 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
                 checked = AlertKind.IGNITION.key in settings.alertKinds,
                 onChange = { vm.setAlertKind(AlertKind.IGNITION, it, info) },
             )
+            val lowOn = AlertKind.LOW_BATTERY.key in settings.alertKinds
+            val lowVolts = info.prefs.trackerLowVolts
             ToggleRow(
-                AlertKind.LOW_BATTERY.title, hintFor(AlertKind.LOW_BATTERY.key, if (micodus) "Below 11.5 V" else AlertKind.LOW_BATTERY.hint),
-                checked = AlertKind.LOW_BATTERY.key in settings.alertKinds,
+                AlertKind.LOW_BATTERY.title,
+                hintFor(AlertKind.LOW_BATTERY.key, if (micodus) "Below ${TrackerCommands.volts(lowVolts)} V" else AlertKind.LOW_BATTERY.hint),
+                checked = lowOn,
                 onChange = { vm.setAlertKind(AlertKind.LOW_BATTERY, it, info) },
+                divider = !(micodus && lowOn),
                 enabled = !micodus || pending == null,
             )
+            // The tracker's own alert takes any voltage; the app sends the new one once the taps settle
+            if (micodus && lowOn) {
+                Stepper(
+                    "Alert below",
+                    "${TrackerCommands.volts(lowVolts)} V",
+                    lower = "Lower by 0.1 V",
+                    raise = "Raise by 0.1 V",
+                    onLower = { vm.setTrackerLowVolts(info, lowVolts - 0.1) },
+                    onRaise = { vm.setTrackerLowVolts(info, lowVolts + 0.1) },
+                    divider = true,
+                )
+            }
             ToggleRow(
                 AlertKind.UNPLUGGED.title, hintFor(AlertKind.UNPLUGGED.key, AlertKind.UNPLUGGED.hint),
                 checked = AlertKind.UNPLUGGED.key in settings.alertKinds,
@@ -198,19 +216,29 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
             )
         }
 
-        // ---- tracker
-        val canLocate = TrackerCommands.supports(info.kind, Action.LOCATE, types)
-        val canRate = micodus || "positionPeriodic" in types
-        val canRestart = TrackerCommands.supports(info.kind, Action.RESTART, types)
-        if (canLocate || canRate || canRestart) {
+        // ---- tracker: the commands chosen for the main screen; the rest are under Advanced commands
+        val saved = options[info.device.id]?.saved.orEmpty()
+        val canCustom = micodus || "custom" in types
+        val commands = trackerCommands(vm, info, types, saved, canCustom, onRate = { rateDialog = true }, onConfirm = { confirm = it })
+        val byKey = commands.associateBy { it.key }
+        val shown = info.prefs.shownCommands.mapNotNull { key ->
+            byKey[key] ?: key.removePrefix("text:").takeIf { key.startsWith("text:") && canCustom }?.let { text ->
+                QuickCommand(key, text, "Custom command") { vm.customCommand(info, text) }
+            }
+        }
+        val editable = settings.advancedCommands
+        if (shown.isNotEmpty()) {
             SectionCard("Tracker") {
-                if (canLocate) ChevronRow("Locate now", "Asks the tracker for a fresh position", divider = canRate || canRestart) { vm.send(info, Action.LOCATE) }
-                if (canRate) ChevronRow("Update rate", "How often it reports", divider = canRestart) { rateDialog = true }
-                if (canRestart) ChevronRow("Restart tracker", divider = false) { confirm = Action.RESTART }
+                shown.forEachIndexed { i, cmd ->
+                    CommandRow(cmd, divider = i < shown.lastIndex, main = true, editable = editable) { vm.setMainCommand(info, cmd.key, false) }
+                }
             }
         }
 
-        if (settings.advancedCommands) AdvancedCommands(vm, info, types)
+        if (editable) {
+            val shownKeys = shown.map { it.key }.toSet()
+            AdvancedCommands(vm, info, commands.filter { it.key !in shownKeys }, canCustom)
+        }
     }
 
     val target = info
@@ -288,22 +316,45 @@ fun ControlsScreen(vm: AppViewModel, onBack: () -> Unit) {
 
 @Composable
 private fun SpeedStepper(limit: Int, onChange: (Int) -> Unit) {
+    Stepper(
+        "Alert above",
+        "$limit km/h",
+        lower = "Lower by 10 km/h",
+        raise = "Raise by 10 km/h",
+        onLower = { onChange((limit - 10).coerceAtLeast(30)) },
+        onRaise = { onChange((limit + 10).coerceAtMost(200)) },
+    )
+}
+
+@Composable
+private fun Stepper(
+    label: String,
+    value: String,
+    lower: String,
+    raise: String,
+    onLower: () -> Unit,
+    onRaise: () -> Unit,
+    divider: Boolean = false,
+) {
     val c = LocalAppColors.current
-    Row(
-        Modifier.fillMaxWidth().padding(bottom = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("Alert above", style = MaterialTheme.typography.bodyMedium, color = c.ink2)
+    Column {
         Row(
-            Modifier.clip(RoundedCornerShape(14.dp)).background(c.surface2).padding(4.dp),
+            Modifier.fillMaxWidth().padding(bottom = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            StepButton("Lower by 10 km/h", Ic.minus) { onChange((limit - 10).coerceAtLeast(30)) }
-            Text("$limit km/h", style = MaterialTheme.typography.titleMedium, color = c.ink, textAlign = TextAlign.Center, modifier = Modifier.widthIn(min = 86.dp))
-            StepButton("Raise by 10 km/h", Ic.plus) { onChange((limit + 10).coerceAtMost(200)) }
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = c.ink2)
+            Row(
+                Modifier.clip(RoundedCornerShape(14.dp)).background(c.surface2).padding(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                StepButton(lower, Ic.minus, onLower)
+                Text(value, style = MaterialTheme.typography.titleMedium, color = c.ink, textAlign = TextAlign.Center, modifier = Modifier.widthIn(min = 86.dp))
+                StepButton(raise, Ic.plus, onRaise)
+            }
         }
+        if (divider) HorizontalDivider(color = c.divider, thickness = 1.dp)
     }
 }
 
@@ -315,38 +366,83 @@ private fun StepButton(label: String, icon: androidx.compose.ui.graphics.vector.
     }
 }
 
-/** Every command Traccar offers for this tracker, the server's saved commands, and a custom box. */
+/** A command that can sit with the main controls or under Advanced commands. */
+private data class QuickCommand(val key: String, val title: String, val hint: String?, val run: () -> Unit)
+
+/** Every command this tracker can be sent from the Tracker card: the app's own, the server's saved ones and Traccar's. */
+private fun trackerCommands(
+    vm: AppViewModel,
+    info: CarInfo,
+    types: Set<String>,
+    saved: List<io.github.bornaradusin.cartracker.data.SavedCommand>,
+    canCustom: Boolean,
+    onRate: () -> Unit,
+    onConfirm: (Action) -> Unit,
+): List<QuickCommand> = buildList {
+    if (TrackerCommands.supports(info.kind, Action.LOCATE, types)) {
+        add(QuickCommand("locate", "Locate now", "Asks the tracker for a fresh position") { vm.send(info, Action.LOCATE) })
+    }
+    if (info.kind == TrackerKind.MICODUS || "positionPeriodic" in types) add(QuickCommand("rate", "Update rate", "How often it reports", onRate))
+    if (TrackerCommands.supports(info.kind, Action.RESTART, types)) add(QuickCommand("restart", "Restart tracker", null) { onConfirm(Action.RESTART) })
+    saved.forEach { cmd ->
+        val name = cmd.description?.takeIf { it.isNotBlank() } ?: TrackerCommands.typeName(cmd.type)
+        add(
+            QuickCommand("saved:${cmd.id}", name, "Saved on the server") {
+                vm.sendAdvanced(info, name, kotlinx.serialization.json.buildJsonObject {
+                    put("id", kotlinx.serialization.json.JsonPrimitive(cmd.id))
+                    put("deviceId", kotlinx.serialization.json.JsonPrimitive(info.device.id))
+                    put("type", kotlinx.serialization.json.JsonPrimitive(cmd.type))
+                    put("textChannel", kotlinx.serialization.json.JsonPrimitive(false))
+                    put("attributes", cmd.attributes)
+                })
+            },
+        )
+    }
+    types.filter { it != "custom" }.sorted().forEach { type ->
+        val name = TrackerCommands.typeName(type)
+        add(QuickCommand("type:$type", name, "Supported by this tracker") { vm.sendAdvanced(info, name, TrackerCommands.typed(info.device.id, type)) })
+    }
+}
+
+/**
+ * A command row. With [editable], the star moves it: coloured on the main screen (tap to move it under
+ * Advanced commands), grey under Advanced (tap to show it with the main controls).
+ */
 @Composable
-private fun AdvancedCommands(vm: AppViewModel, info: CarInfo, types: Set<String>) {
+private fun CommandRow(cmd: QuickCommand, divider: Boolean, main: Boolean, editable: Boolean, onMove: () -> Unit) {
     val c = LocalAppColors.current
-    val options by vm.commandOptions.collectAsStateWithLifecycle()
-    val saved = options[info.device.id]?.saved.orEmpty()
+    SettingRow(cmd.title, cmd.hint, divider, onClick = cmd.run) {
+        if (editable) {
+            IconButton(onClick = onMove, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    Ic.star,
+                    if (main) "Move ${cmd.title} to Advanced commands" else "Show ${cmd.title} with the main controls",
+                    tint = if (main) c.accentText else c.line,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+        Icon(Ic.chevronRight, null, tint = c.muted, modifier = Modifier.size(18.dp))
+    }
+}
+
+/** The commands not on the main screen, and a custom box. A star moves a command to the main screen. */
+@Composable
+private fun AdvancedCommands(vm: AppViewModel, info: CarInfo, commands: List<QuickCommand>, canCustom: Boolean) {
+    val c = LocalAppColors.current
     var text by remember { mutableStateOf("") }
 
     SectionCard("Advanced commands") {
-        if (saved.isNotEmpty()) {
-            Text("Saved on the server", style = MaterialTheme.typography.labelMedium, color = c.muted, modifier = Modifier.padding(top = 4.dp))
-            saved.forEach { cmd ->
-                val name = cmd.description?.takeIf { it.isNotBlank() } ?: TrackerCommands.typeName(cmd.type)
-                ChevronRow(name) {
-                    vm.sendAdvanced(info, name, kotlinx.serialization.json.buildJsonObject {
-                        put("id", kotlinx.serialization.json.JsonPrimitive(cmd.id))
-                        put("deviceId", kotlinx.serialization.json.JsonPrimitive(info.device.id))
-                        put("type", kotlinx.serialization.json.JsonPrimitive(cmd.type))
-                        put("textChannel", kotlinx.serialization.json.JsonPrimitive(false))
-                        put("attributes", cmd.attributes)
-                    })
-                }
-            }
+        Text(
+            "Tap the star on any command to show it with the main controls, or on one there to move it back here.",
+            style = MaterialTheme.typography.bodySmall,
+            color = c.muted,
+            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+        )
+        commands.forEachIndexed { i, cmd ->
+            CommandRow(cmd, divider = i < commands.lastIndex || canCustom, main = false, editable = true) { vm.setMainCommand(info, cmd.key, true) }
         }
-        val simple = types.filter { it != "custom" }.sorted()
-        if (simple.isNotEmpty()) {
-            Text("Supported by this tracker", style = MaterialTheme.typography.labelMedium, color = c.muted, modifier = Modifier.padding(top = 10.dp))
-            simple.forEach { type ->
-                ChevronRow(TrackerCommands.typeName(type)) { vm.sendAdvanced(info, TrackerCommands.typeName(type), TrackerCommands.typed(info.device.id, type)) }
-            }
-        }
-        if ("custom" in types || info.kind == TrackerKind.MICODUS) {
+        if (canCustom) {
             Text(
                 if (info.kind == TrackerKind.MICODUS) "Custom command (as you'd text it, e.g. STATUS#)" else "Custom command",
                 style = MaterialTheme.typography.labelMedium,
@@ -365,10 +461,19 @@ private fun AdvancedCommands(vm: AppViewModel, info: CarInfo, types: Set<String>
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.weight(1f),
                 )
+                IconButton(
+                    onClick = {
+                        vm.setMainCommand(info, "text:" + text.trim(), true)
+                        text = ""
+                    },
+                    enabled = text.isNotBlank(),
+                ) {
+                    Icon(Ic.star, "Keep as a button with the main controls", tint = if (text.isNotBlank()) c.accentText else c.line, modifier = Modifier.size(22.dp))
+                }
                 BigButton("Send", enabled = text.isNotBlank()) { vm.customCommand(info, text) }
             }
             Text(
-                "Replies to custom commands appear in Traccar's own log, not here.",
+                "The star keeps the command as a button with the main controls.",
                 style = MaterialTheme.typography.bodySmall,
                 color = c.muted,
                 modifier = Modifier.padding(bottom = 8.dp),

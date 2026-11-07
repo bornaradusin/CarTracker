@@ -451,8 +451,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun canDo(car: CarInfo, action: Action): Boolean = c.commands.supports(target(car), action)
 
-    fun send(car: CarInfo, action: Action, quiet: Boolean = false, speedKmh: Int = TrackerCommands.DEFAULT_SPEED_KMH) =
-        c.commands.send(target(car), action, quiet, speedKmh)
+    fun send(
+        car: CarInfo,
+        action: Action,
+        quiet: Boolean = false,
+        speedKmh: Int = TrackerCommands.DEFAULT_SPEED_KMH,
+        lowVolts: Double = car.prefs.trackerLowVolts,
+    ) = c.commands.send(target(car), action, quiet, speedKmh, lowVolts)
 
     fun setUpdateRate(car: CarInfo, rate: UpdateRate) = c.commands.setUpdateRate(target(car), rate)
 
@@ -492,6 +497,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private val speedSends = mutableMapOf<Long, Job>()
+    private val voltSends = mutableMapOf<Long, Job>()
+
+    /**
+     * The voltage a MiCODUS tracker's own low battery alert goes off at. Saved straight away and sent
+     * once the − / + taps settle, while that alert is on.
+     */
+    fun setTrackerLowVolts(car: CarInfo, volts: Double) = viewModelScope.launch {
+        val v = Math.round(volts.coerceIn(TrackerCommands.MIN_LOW_VOLTS, TrackerCommands.MAX_LOW_VOLTS) * 10) / 10.0
+        c.settings.updateDevice(car.device.id) { it.copy(trackerLowVolts = v) }
+        if (car.kind != TrackerKind.MICODUS || AlertKind.LOW_BATTERY.key !in settings.value.alertKinds) return@launch
+        voltSends.remove(car.device.id)?.cancel()
+        voltSends[car.device.id] = viewModelScope.launch {
+            delay(1_500)
+            send(car, Action.LOW_BATTERY_ON, lowVolts = v)
+        }
+    }
 
     /** Speeding alerts come from Traccar itself: the car's speedLimit attribute (in knots); 0 turns them off. */
     fun setSpeedLimit(car: CarInfo, kmh: Int) = viewModelScope.launch {
@@ -508,6 +529,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 delay(1_500)
                 if (kmh > 0) send(car, Action.SPEEDING_ON, quiet = true, speedKmh = kmh) else send(car, Action.SPEEDING_OFF, quiet = true)
             }
+        }
+    }
+
+    /** Shows a command with the main controls ([main] true) or moves it under Advanced commands. */
+    fun setMainCommand(car: CarInfo, key: String, main: Boolean) = viewModelScope.launch {
+        c.settings.updateDevice(car.device.id) { p ->
+            val now = p.shownCommands
+            p.copy(mainCommands = if (main) (now - key) + key else now - key)
         }
     }
 

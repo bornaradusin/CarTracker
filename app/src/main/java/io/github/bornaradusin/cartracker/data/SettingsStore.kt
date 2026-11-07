@@ -35,6 +35,8 @@ data class DevicePrefs(
     val trackerType: String = "auto",
     /** Speed alert limit in km/h; 0 = off. */
     val speedLimit: Int = 0,
+    /** The tracker's own low battery alert (MiCODUS LVALM) goes off below this many volts. */
+    val trackerLowVolts: Double = TrackerCommands.DEFAULT_LOW_VOLTS,
     /** Warn when the car battery drops below this many volts while parked; 0 = off. */
     val lowVoltage: Double = 11.8,
     /** A low-battery warning was sent and the battery hasn't recovered since. */
@@ -45,7 +47,19 @@ data class DevicePrefs(
     /** The last live link made for this car, and when it ends. */
     val shareToken: String = "",
     val shareUntil: Long = 0,
-)
+    /**
+     * The commands shown with the main controls, in order; the rest are under Advanced commands.
+     * Keys: "locate", "rate", "restart", "saved:<id>", "type:<Traccar type>", "text:<custom text>".
+     * Null until someone changes it, which means [defaultMainCommands].
+     */
+    val mainCommands: List<String>? = null,
+) {
+    val shownCommands: List<String> get() = mainCommands ?: defaultMainCommands
+
+    companion object {
+        val defaultMainCommands = listOf("locate", "rate", "restart")
+    }
+}
 
 data class AppSettings(
     val server: String = "",

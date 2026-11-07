@@ -93,9 +93,10 @@ class CommandCenter(
         action: Action,
         quiet: Boolean = false,
         speedKmh: Int = TrackerCommands.DEFAULT_SPEED_KMH,
+        lowVolts: Double = TrackerCommands.DEFAULT_LOW_VOLTS,
     ): Job = scope.launch {
         val o = optionsFor(target.id)
-        val command = TrackerCommands.command(target.kind, action, target.id, o.types, speedKmh)
+        val command = TrackerCommands.command(target.kind, action, target.id, o.types, speedKmh, lowVolts)
         if (command == null) {
             say("${target.name}'s tracker can't do that.")
             return@launch
@@ -121,7 +122,8 @@ class CommandCenter(
             say("${target.name} is offline, so nothing was changed. Try again once it's back online.")
             return@launch
         }
-        deliver(target, action.label, command, quiet = false, change = change, action = action)
+        val label = if (action == Action.LOW_BATTERY_ON) "Low battery alert below ${TrackerCommands.volts(lowVolts)} V" else action.label
+        deliver(target, label, command, quiet = false, change = change, action = action)
     }
 
     fun setUpdateRate(target: CommandTarget, rate: UpdateRate): Job = scope.launch {

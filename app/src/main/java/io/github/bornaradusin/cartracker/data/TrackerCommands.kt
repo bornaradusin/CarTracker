@@ -55,6 +55,13 @@ data class UpdateRate(val drivingSeconds: Int, val parkedSeconds: Int) {
 object TrackerCommands {
 
     const val DEFAULT_SPEED_KMH = 120
+    const val DEFAULT_LOW_VOLTS = 11.5
+
+    /** The tracker's low battery alert takes 9 to 95 V; car batteries need 9 to 30. */
+    const val MIN_LOW_VOLTS = 9.0
+    const val MAX_LOW_VOLTS = 30.0
+
+    fun volts(v: Double): String = String.format(java.util.Locale.US, "%.1f", v)
 
     fun kind(prefs: DevicePrefs, position: Position?): TrackerKind = when (prefs.trackerType) {
         "micodus" -> TrackerKind.MICODUS
@@ -66,8 +73,18 @@ object TrackerCommands {
     fun supports(kind: TrackerKind, action: Action, types: Set<String>): Boolean =
         command(kind, action, 0, types) != null
 
-    /** The command JSON for [action], or null when this tracker can't do it. [speedKmh] is the limit for [Action.SPEEDING_ON]. */
-    fun command(kind: TrackerKind, action: Action, deviceId: Long, types: Set<String>, speedKmh: Int = DEFAULT_SPEED_KMH): JsonObject? {
+    /**
+     * The command JSON for [action], or null when this tracker can't do it. [speedKmh] is the limit for
+     * [Action.SPEEDING_ON], [lowVolts] the threshold for [Action.LOW_BATTERY_ON].
+     */
+    fun command(
+        kind: TrackerKind,
+        action: Action,
+        deviceId: Long,
+        types: Set<String>,
+        speedKmh: Int = DEFAULT_SPEED_KMH,
+        lowVolts: Double = DEFAULT_LOW_VOLTS,
+    ): JsonObject? {
         if (kind == TrackerKind.MICODUS) {
             val text = when (action) {
                 // Traccar's Engine stop/resume never reach MiCODUS trackers: they ignore that JT808 message
@@ -80,7 +97,7 @@ object TrackerCommands {
                 Action.AUTO_ARM_OFF -> "ACCARM,OFF#"
                 Action.VIBRATION_ON -> "SENALM,ON,0#"
                 Action.VIBRATION_OFF -> "SENALM,OFF#"
-                Action.LOW_BATTERY_ON -> "LVALM,ON,11.5,0#"
+                Action.LOW_BATTERY_ON -> "LVALM,ON,${volts(lowVolts.coerceIn(MIN_LOW_VOLTS, MAX_LOW_VOLTS))},0#"
                 Action.LOW_BATTERY_OFF -> "LVALM,OFF#"
                 Action.UNPLUGGED_ON -> "PWRALM,ON,0#"
                 Action.UNPLUGGED_OFF -> "PWRALM,OFF#"
