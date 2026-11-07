@@ -25,3 +25,9 @@ Turn it off, or change the level from 11.0 to 12.4 V, under **Low battery warnin
 This is separate from the tracker's own **Low car battery** alarm under [Controls](Controls), which the tracker raises below the voltage you set there (11.5 V at first).
 
 Past days are kept on your phone once loaded, so the 7-day view opens quickly the second time.
+
+## Reading correction
+
+Some trackers read the battery a little low or high. Measure it with a multimeter across the battery terminals, compare with the app, and set the difference under **Reading correction**, from −1.0 to +1.0 V in steps of 0.1 V. For example, if the app says 12.2 V and the multimeter says 12.4 V, set **+0.2 V**.
+
+The correction changes every reading in the app: the Car screen, this screen and its history, the widget and the low battery warning. On a MiCODUS tracker it also resends the tracker's own low battery alert, so it goes off at the voltage you set.
