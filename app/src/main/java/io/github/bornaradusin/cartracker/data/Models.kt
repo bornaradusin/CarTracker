@@ -139,6 +139,8 @@ data class Summary(
     /** Metres. */
     val distance: Double = 0.0,
     val maxSpeed: Double = 0.0,
+    val startTime: String? = null,
+    val endTime: String? = null,
 )
 
 @Serializable

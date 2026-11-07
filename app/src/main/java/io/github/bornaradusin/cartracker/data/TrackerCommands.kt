@@ -172,8 +172,12 @@ object TrackerCommands {
         Regex("^SF\\s*OK") to "Alarm turned on",
         Regex("^CF\\s*OK") to "Alarm turned off",
         Regex("RELAY\\s*[,:=]?\\s*2\\b") to "Fuel will be cut when the car slows down",
+        // Restore before cut: some trackers word it "resume fuel" or "cancel cut off fuel"
+        Regex(
+            "RELAY\\s*[,:=]?\\s*0\\b|(RESTORE|RESUME|RECOVER)\\w*\\s*(THE\\s*)?(FUEL|OIL|POWER)|" +
+                "(FUEL|OIL)\\s*(SUPPLY\\s*)?(IS\\s*)?(RESTORED|RESUMED|RECOVERED)|(CANCEL|RELEASE)\\w*\\s*(THE\\s*)?(CUT|FUEL|OIL)",
+        ) to "Fuel restored",
         Regex("RELAY\\s*[,:=]?\\s*1\\b|CUT\\s*OFF\\s*(THE\\s*)?(FUEL|OIL|POWER)|(FUEL|OIL)\\s*(SUPPLY\\s*)?(IS\\s*)?CUT") to "Fuel cut",
-        Regex("RELAY\\s*[,:=]?\\s*0\\b|RESTORE\\s*(THE\\s*)?(FUEL|OIL|POWER)|(FUEL|OIL)\\s*(SUPPLY\\s*)?(IS\\s*)?RESTORED") to "Fuel restored",
         Regex("ACCARM\\s*[,:=]?\\s*ON") to "Arms automatically after the ignition goes off",
         Regex("ACCARM\\s*[,:=]?\\s*OFF") to "Stopped arming automatically",
         Regex("SENALM\\s*[,:=]?\\s*ON|VIBRAT\\w*\\s*ALARM\\s*(IS\\s*)?(ON|OPEN|ENABLE)") to "Vibration alert turned on",

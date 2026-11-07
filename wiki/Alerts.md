@@ -47,3 +47,14 @@ With live alerts off, the app checks for new alerts every 15 minutes instead.
 The app's own **low battery warning** is set separately, per car, under [Battery](Battery#low-battery-warning).
 
 Tap any alert for its details: the full text (for example the tracker's whole answer to **Locate now** or **Check status**), when and where it happened, **Copy**, and **Open in Maps**.
+
+## Commands you sent
+
+Every command sent from this phone (fuel, alarm, Locate now, settings, custom commands, and the quick settings tile) shows in **Alerts** with what came of it:
+
+- **Sent · waiting for the car to answer**, with how many times it was sent
+- **Answered**, with the tracker's answer in plain words
+- **Done · the car's report shows it**, when the tracker didn't answer but its next report shows the change
+- **No answer**, **Didn't work** or **Not sent**, with **Send again** in its details
+
+The tracker's answer shows with the command, not as a separate alert. Tap **Commands** at the top to see only these. They're kept on the phone for a week.

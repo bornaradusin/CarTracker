@@ -219,6 +219,10 @@ class TraccarApi {
     suspend fun summary(deviceId: Long, from: Instant, to: Instant): List<Summary> =
         AppJson.decodeFromString(get("/api/reports/summary", range(listOf(deviceId), from, to)))
 
+    /** One summary per day (in the server's time zone): a quick way to see which days the car moved. */
+    suspend fun dailySummary(deviceId: Long, from: Instant, to: Instant): List<Summary> =
+        AppJson.decodeFromString(get("/api/reports/summary", range(listOf(deviceId), from, to) + ("daily" to "true")))
+
     suspend fun events(deviceIds: Collection<Long>, from: Instant, to: Instant): List<Event> {
         if (deviceIds.isEmpty()) return emptyList()
         return AppJson.decodeFromString(get("/api/reports/events", range(deviceIds, from, to)))

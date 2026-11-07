@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -195,6 +196,28 @@ private fun MainShell(vm: AppViewModel, openAlertsSignal: Int) {
             title = { Text("Signed out by the server") },
             text = { Text("The server no longer accepts this phone's sign-in. Please sign in again.") },
             confirmButton = { TextButton(onClick = { vm.signOut() }) { Text("Sign in again") } },
+        )
+    }
+
+    val crash by vm.lastCrash.collectAsStateWithLifecycle()
+    crash?.let { text ->
+        val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+        AlertDialog(
+            onDismissRequest = { vm.dismissCrash() },
+            containerColor = c.surface,
+            title = { Text("CarTracker closed unexpectedly", color = c.ink) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text("Last time, the app stopped because of an error. Copy it and send it on, so it can be fixed.", style = MaterialTheme.typography.bodyMedium, color = c.ink2, modifier = Modifier.padding(bottom = 10.dp))
+                    Text(text, style = MaterialTheme.typography.bodySmall, color = c.muted)
+                }
+            },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(text)) }) { Text("Copy", color = c.accentText) }
+                    TextButton(onClick = { vm.dismissCrash() }) { Text("Close", color = c.ink2) }
+                }
+            },
         )
     }
 

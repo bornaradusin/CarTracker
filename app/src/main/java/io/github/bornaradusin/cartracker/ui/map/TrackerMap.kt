@@ -247,23 +247,26 @@ fun TrackerMap(
 
     LaunchedEffect(loaded, heat) {
         val s = loaded ?: return@LaunchedEffect
-        // Points within about 45 m are counted together (as a weight), so a year of driving stays light,
-        // and it's worked out away from the screen's thread
+        // Points within about 45 m are counted together, so a year of driving stays light: a spot passed
+        // often gets a few points stacked (one more each time the count doubles), not a weight, which
+        // crashes the map's renderer. Worked out away from the screen's thread.
         val collection = withContext(Dispatchers.Default) {
             val cells = HashMap<Long, IntArray>()
             heat.forEach { (lat, lon) ->
                 val key = Math.round(lat / HEAT_CELL) * 10_000_000L + Math.round(lon / HEAT_CELL)
                 cells.getOrPut(key) { IntArray(1) }[0]++
             }
-            FeatureCollection.fromFeatures(
-                cells.map { (key, count) ->
-                    var lonCell = key % 10_000_000L
-                    var latCell = key / 10_000_000L
-                    if (lonCell > 5_000_000L) { lonCell -= 10_000_000L; latCell++ }
-                    if (lonCell < -5_000_000L) { lonCell += 10_000_000L; latCell-- }
-                    Feature.fromGeometry(Point.fromLngLat(lonCell * HEAT_CELL, latCell * HEAT_CELL)).apply { addNumberProperty("w", count[0]) }
-                },
-            )
+            val features = ArrayList<Feature>()
+            cells.forEach { (key, count) ->
+                var lonCell = key % 10_000_000L
+                var latCell = key / 10_000_000L
+                if (lonCell > 5_000_000L) { lonCell -= 10_000_000L; latCell++ }
+                if (lonCell < -5_000_000L) { lonCell += 10_000_000L; latCell-- }
+                val copies = (1 + (31 - Integer.numberOfLeadingZeros(count[0]))).coerceAtMost(6)
+                val point = Point.fromLngLat(lonCell * HEAT_CELL, latCell * HEAT_CELL)
+                repeat(copies) { features += Feature.fromGeometry(point) }
+            }
+            FeatureCollection.fromFeatures(features)
         }
         s.getSourceAs<GeoJsonSource>(SOURCE_HEAT)?.setGeoJson(collection)
     }
@@ -367,7 +370,6 @@ private fun addOverlayLayers(style: Style, routeColor: Color, dark: Boolean) {
                     Expression.stop(1, Expression.rgba(226, 49, 43, 0.95)),
                 ),
             ),
-            PropertyFactory.heatmapWeight(Expression.get("w")),
             PropertyFactory.heatmapOpacity(0.9f),
         ),
     )

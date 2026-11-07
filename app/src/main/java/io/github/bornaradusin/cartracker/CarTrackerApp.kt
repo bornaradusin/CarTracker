@@ -7,6 +7,7 @@ import io.github.bornaradusin.cartracker.alerts.BatteryWatch
 import io.github.bornaradusin.cartracker.alerts.Notifier
 import io.github.bornaradusin.cartracker.data.AddressLookup
 import io.github.bornaradusin.cartracker.data.CommandCenter
+import io.github.bornaradusin.cartracker.data.CommandLog
 import io.github.bornaradusin.cartracker.data.HistoryStore
 import io.github.bornaradusin.cartracker.shortcuts.CarWidget
 import io.github.bornaradusin.cartracker.data.LiveRepository
@@ -34,6 +35,17 @@ class CarTrackerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // A crash is written down, so the app can show what happened when it's opened again
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching {
+                java.io.File(filesDir, CRASH_FILE).writeText(
+                    "CarTracker ${BuildConfig.VERSION_NAME} · Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL}\n" +
+                        "${java.time.Instant.now()}\n\n${error.stackTraceToString().take(8_000)}",
+                )
+            }
+            previous?.uncaughtException(thread, error)
+        }
         container = AppContainer(this)
         Notifier.createChannels(this)
         MapLibre.getInstance(this)
@@ -56,7 +68,8 @@ class AppContainer(val app: Application) {
     val live = LiveRepository(api, scope)
     val addresses = AddressLookup(app)
     val alerts = AlertCenter(app, api, settings, live, addresses)
-    val commands = CommandCenter(api, settings, scope)
+    val commandLog = CommandLog(java.io.File(app.filesDir, "commands.json"), scope)
+    val commands = CommandCenter(api, settings, live, commandLog, scope)
     val battery = BatteryWatch(app, settings)
     val history = HistoryStore(api, java.io.File(app.cacheDir, "history"))
 
@@ -96,3 +109,6 @@ class AppContainer(val app: Application) {
 }
 
 val Context.container: AppContainer get() = (applicationContext as CarTrackerApp).container
+
+/** Where the last crash is written, read and shown on the next start. */
+const val CRASH_FILE = "last-crash.txt"

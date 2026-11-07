@@ -87,8 +87,17 @@ class HistoryStore(private val api: TraccarApi, private val root: File) {
         val first = from.atZone(zone).toLocalDate()
         val last = end.atZone(zone).toLocalDate()
         val days = generateSequence(first) { it.plusDays(1) }.takeWhile { !it.isAfter(last) }.toList()
-        val gate = Semaphore(4)
-        val trips = days.map { day -> async { gate.withPermit { dayTrips(deviceId, day) } } }
+        // Over a longer stretch, one quick summary says which days the car moved: only those are asked about
+        val moved: Set<LocalDate>? = if (days.size <= 2) null else runCatching {
+            api.dailySummary(deviceId, from, end)
+                .filter { it.distance > 100 }
+                .flatMap { s -> listOfNotNull(Format.parse(s.startTime), Format.parse(s.endTime)).map { it.atZone(zone).toLocalDate() } }
+                .toSet()
+        }.getOrNull()
+        val gate = Semaphore(6)
+        val trips = days.map { day ->
+            async { if (moved != null && day !in moved && !cached(deviceId, day)) emptyList() else gate.withPermit { dayTrips(deviceId, day) } }
+        }
             .awaitAll()
             .flatten()
             .sortedBy { it.startTime }
@@ -122,6 +131,8 @@ class HistoryStore(private val api: TraccarApi, private val root: File) {
         }
         return result
     }
+
+    private fun cached(deviceId: Long, day: LocalDate) = File(dir("trips", deviceId), "$day.json").exists()
 
     private suspend fun dayTrips(deviceId: Long, day: LocalDate): List<Trip> {
         val start = day.atStartOfDay(zone).toInstant()

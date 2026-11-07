@@ -1,5 +1,7 @@
 package io.github.bornaradusin.cartracker.data
 
+import io.github.bornaradusin.cartracker.util.Format
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -42,6 +44,8 @@ data class CommandTarget(val id: Long, val name: String, val kind: TrackerKind, 
 class CommandCenter(
     private val api: TraccarApi,
     private val settings: SettingsStore,
+    private val live: LiveRepository,
+    private val log: CommandLog,
     private val scope: CoroutineScope,
 ) {
     private val _options = MutableStateFlow<Map<Long, CommandOptions>>(emptyMap())
@@ -103,7 +107,7 @@ class CommandCenter(
         // MiCODUS trackers answer every command, so their settings wait for that answer.
         // Other trackers may never answer, so theirs change straight away.
         if (change == null || target.kind != TrackerKind.MICODUS) {
-            if (deliver(target, action.label, command, quiet) && change != null) applyChange(target, change)
+            if (deliver(target, action.label, command, quiet, action = action) && change != null) applyChange(target, change)
             return@launch
         }
         // Fuel can wait for the tracker to reconnect (Traccar keeps the command); the rest can't
@@ -111,7 +115,7 @@ class CommandCenter(
             say("${target.name} is offline, so nothing was changed. Try again once it's back online.")
             return@launch
         }
-        deliver(target, action.label, command, quiet = false, change = change)
+        deliver(target, action.label, command, quiet = false, change = change, action = action)
     }
 
     fun setUpdateRate(target: CommandTarget, rate: UpdateRate): Job = scope.launch {
@@ -175,6 +179,7 @@ class CommandCenter(
         quiet: Boolean,
         preferSaved: Boolean = true,
         change: PendingChange? = null,
+        action: Action? = null,
     ): Boolean {
         if (_pending.value.containsKey(target.id)) {
             say("Still waiting for ${target.name} to confirm the last change. Try again in a moment.")
@@ -185,6 +190,7 @@ class CommandCenter(
         // Marked as waiting before anything is sent, so a quick second tap (or the tile) can't send it twice
         if (change != null) _pending.update { it + (target.id to change) }
         _busy.value = label
+        val entry = log.add(target.id, target.name, label, action?.name)
         var watching = false
         return try {
             val o = optionsFor(target.id)
@@ -197,25 +203,35 @@ class CommandCenter(
                     .maxOfOrNull { it.id }
             }.getOrNull() ?: 0L
             val now = api.sendCommand(toSend)
+            log.update(entry) { it.copy(state = if (now) CommandEntry.WAITING else CommandEntry.QUEUED) }
             if (!quiet && !now) {
                 say(
-                    if (change != null) "${target.name} went offline. It gets this when it reconnects, and the setting changes once it confirms."
+                    if (change != null) "${target.name} went offline. It gets this when it reconnects, and the app shows the change once it confirms."
                     else "${target.name} is offline. It gets this when it next connects.",
                 )
             }
+            // Fuel can take a while (the car's report confirms it too); other settings answer quickly
+            val window = when {
+                !now -> 15 * 60_000L
+                change?.key == PendingChange.FUEL -> 5 * 60_000L
+                else -> 100_000L
+            }
             // A setting sent straight away is sent again if the tracker doesn't answer: they're safe to repeat
-            watchReply(target, label, sentAt, lastReply, if (now) 100_000L else 15 * 60_000L, change, toSend.takeIf { now && change != null })
+            watchReply(target, label, entry, sentAt, lastReply, window, change, toSend.takeIf { now && change != null })
             watching = true
             true
         } catch (e: ApiException) {
-            say(
-                when (e.code) {
-                    400, 403 -> "Your account isn't allowed to send that. Ask the server's admin, or add it as a saved command."
-                    else -> e.message ?: "Couldn't send that."
-                },
-            )
+            val problem = when (e.code) {
+                400, 403 -> "Your account isn't allowed to send that. Ask the server's admin, or add it as a saved command."
+                else -> e.message ?: "Couldn't send that."
+            }
+            log.update(entry) { it.copy(state = CommandEntry.NOT_SENT, problem = problem) }
+            say(problem)
             false
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
+            log.update(entry) { it.copy(state = CommandEntry.NOT_SENT, problem = "Couldn't reach the server.") }
             say("Couldn't reach the server.")
             false
         } finally {
@@ -226,12 +242,13 @@ class CommandCenter(
 
     /**
      * Waits for the tracker to answer [label] (Traccar records the answer as a "commandResult"
-     * event) and shows it. A [change] is saved only once the tracker confirms it; with no answer
-     * in time, nothing changes.
+     * event) and shows it. A [change] is saved once the tracker confirms it: by its answer, or by a
+     * report afterwards that shows the new state (fuel cut, alarm on). With neither in time, nothing changes.
      */
     private fun watchReply(
         target: CommandTarget,
         label: String,
+        entry: Long,
         sentAt: Instant,
         lastReply: Long,
         windowMs: Long,
@@ -252,6 +269,7 @@ class CommandCenter(
                     if (resend != null && resent < RESEND_AFTER.size && waited >= RESEND_AFTER[resent]) {
                         resent++
                         val sent = runCatching { api.sendCommand(resend) }.getOrDefault(true)
+                        log.update(entry) { it.copy(attempts = it.attempts + 1, state = if (sent) it.state else CommandEntry.QUEUED) }
                         if (!sent) {
                             // The tracker dropped off: Traccar keeps the command for when it reconnects
                             resent = RESEND_AFTER.size
@@ -259,34 +277,68 @@ class CommandCenter(
                             say("${target.name} went offline. It gets this when it reconnects, and the app shows the change once it confirms.")
                         }
                     }
-                    val raw = runCatching { api.events(listOf(id), from, Instant.now().plusSeconds(60)) }
+                    val answer = runCatching { api.events(listOf(id), from, Instant.now().plusSeconds(60)) }
                         .getOrNull()
                         .orEmpty()
                         .filter { it.type == "commandResult" && it.id > lastReply }
-                        .map { it.attributes.str("result").orEmpty() }
+                        .map { it.id to it.attributes.str("result").orEmpty() }
                         // An answer about something else (a late reply to an earlier command) isn't this one's
-                        .lastOrNull { reply -> change == null || TrackerCommands.replyAbout(reply).let { it == null || it == change.key to change.on } }
-                        ?: continue
+                        .lastOrNull { (_, reply) -> change == null || TrackerCommands.replyAbout(reply).let { it == null || it == change.key to change.on } }
+                    if (answer == null) {
+                        // No answer yet: the car's own report may already show the change
+                        if (change != null && reported(id, change, sentAt)) {
+                            applyChange(target, change)
+                            log.update(entry) { it.copy(state = CommandEntry.DONE, byReport = true, replyAt = System.currentTimeMillis()) }
+                            return@launch
+                        }
+                        continue
+                    }
+                    val (eventId, raw) = answer
                     val text = TrackerCommands.friendlyReply(raw)
                     if (text.isEmpty()) continue
                     val failed = TrackerCommands.isFailure(raw)
                     if (change != null && !failed) applyChange(target, change)
+                    log.update(entry) {
+                        it.copy(
+                            state = if (failed) CommandEntry.FAILED else CommandEntry.DONE,
+                            reply = TrackerCommands.readableReply(raw),
+                            replyAt = System.currentTimeMillis(),
+                            replyEventId = eventId,
+                        )
+                    }
                     val shown = if (change != null && failed) "$text. Nothing was changed." else text
                     // Settings show their new state on screen, so only longer answers (status, settings) need a dialog
                     if (shown.length > 60 || '\n' in shown) _reply.value = TrackerReply(target.name, label, shown)
                     else if (change == null || failed) say("${target.name}: $shown")
                     return@launch
                 }
-                if (change != null && isActive) {
-                    say(
-                        if (change.key == PendingChange.FUEL) "${target.name} didn't confirm. Check it's online, then try again."
-                        else "${target.name} didn't confirm, so nothing was changed.",
-                    )
+                if (isActive) {
+                    log.update(entry) { if (it.open) it.copy(state = CommandEntry.NO_ANSWER) else it }
+                    if (change != null) {
+                        say(
+                            if (change.key == PendingChange.FUEL) "${target.name} didn't confirm. Check it's online, then try again."
+                            else "${target.name} didn't confirm, so nothing was changed.",
+                        )
+                    }
                 }
             } finally {
                 if (change != null) _pending.update { if (it[id] === change) it - id else it }
             }
         }
+    }
+
+    /** True when the car has reported since [sentAt] and its report shows [change] done (fuel, alarm). */
+    private fun reported(deviceId: Long, change: PendingChange, sentAt: Instant): Boolean {
+        val p = live.positions.value[deviceId] ?: return false
+        if (p.attributes.containsKey("result")) return false
+        val at = Format.parse(p.serverTime) ?: return false
+        if (!at.isAfter(sentAt.plusSeconds(2))) return false
+        val state = when (change.key) {
+            PendingChange.FUEL -> p.blocked
+            PendingChange.ALARM -> p.armed
+            else -> null
+        }
+        return state == change.on
     }
 
     private fun say(message: String) {

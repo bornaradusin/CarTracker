@@ -9,6 +9,7 @@ import io.github.bornaradusin.cartracker.container
 import io.github.bornaradusin.cartracker.data.Action
 import io.github.bornaradusin.cartracker.data.AlertKind
 import io.github.bornaradusin.cartracker.data.ApiException
+import io.github.bornaradusin.cartracker.data.CommandEntry
 import io.github.bornaradusin.cartracker.data.CommandOptions
 import io.github.bornaradusin.cartracker.data.CommandTarget
 import io.github.bornaradusin.cartracker.data.ParkedTime
@@ -702,9 +703,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Empties the alert list and the badge. Traccar keeps the events; the app just stops showing them. */
     fun clearAlerts() = viewModelScope.launch {
+        c.commandLog.clear()
         val newest = _alerts.value.items.maxOfOrNull { it.event.id } ?: return@launch
         c.settings.clearAlerts(maxOf(newest, settings.value.clearedEventId))
         _alerts.update { it.copy(items = emptyList()) }
+    }
+
+    private val _lastCrash = MutableStateFlow<String?>(null)
+
+    /** What happened the last time the app closed unexpectedly, shown once. */
+    val lastCrash: StateFlow<String?> = _lastCrash.asStateFlow()
+
+    init {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val file = java.io.File(getApplication<Application>().filesDir, io.github.bornaradusin.cartracker.CRASH_FILE)
+            _lastCrash.value = runCatching { if (file.exists()) file.readText() else null }.getOrNull()
+        }
+    }
+
+    fun dismissCrash() {
+        _lastCrash.value = null
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { java.io.File(getApplication<Application>().filesDir, io.github.bornaradusin.cartracker.CRASH_FILE).delete() }
+        }
+    }
+
+    /** Commands sent from this phone over the last week, newest first, with what came of them. */
+    val commandLog: StateFlow<List<CommandEntry>> = c.commandLog.entries
+
+    /** Sends a command from the log again (one of the app's own buttons). */
+    fun sendAgain(entry: CommandEntry) {
+        val car = cars.value.firstOrNull { it.device.id == entry.deviceId } ?: return
+        val action = entry.action?.let { name -> Action.entries.firstOrNull { it.name == name } } ?: return
+        send(car, action)
     }
 
     /** Where an alert happened, looked up once and remembered. */
