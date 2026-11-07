@@ -451,7 +451,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun canDo(car: CarInfo, action: Action): Boolean = c.commands.supports(target(car), action)
 
-    fun send(car: CarInfo, action: Action, quiet: Boolean = false) = c.commands.send(target(car), action, quiet)
+    fun send(car: CarInfo, action: Action, quiet: Boolean = false, speedKmh: Int = TrackerCommands.DEFAULT_SPEED_KMH) =
+        c.commands.send(target(car), action, quiet, speedKmh)
 
     fun setUpdateRate(car: CarInfo, rate: UpdateRate) = c.commands.setUpdateRate(target(car), rate)
 
@@ -465,7 +466,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // ---------- alerts set on the tracker ----------
 
     fun setAlertKind(kind: AlertKind, on: Boolean, car: CarInfo? = null) = viewModelScope.launch {
-        val action = if (car != null && car.kind == TrackerKind.MICODUS) {
+        val micodus = car != null && car.kind == TrackerKind.MICODUS
+        val action = if (car != null && micodus) {
             when (kind) {
                 AlertKind.VIBRATION -> if (on) Action.VIBRATION_ON else Action.VIBRATION_OFF
                 AlertKind.LOW_BATTERY -> if (on) Action.LOW_BATTERY_ON else Action.LOW_BATTERY_OFF
@@ -476,8 +478,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             null
         }
         // Alerts the tracker raises itself change once it confirms; the rest are Traccar's and change now
-        if (car != null && action != null) send(car, action) else c.settings.setAlertKind(kind, on)
+        if (car != null && action != null) {
+            send(car, action)
+            return@launch
+        }
+        c.settings.setAlertKind(kind, on)
+        // Ignition alerts come from Traccar (the ACC wire in every report), so they change straight away.
+        // A MiCODUS tracker is told too, so it reports the change at once and only to the server
+        // (out of the box it also texts the SIM's owner).
+        if (car != null && micodus && kind == AlertKind.IGNITION) {
+            send(car, if (on) Action.IGNITION_ON else Action.IGNITION_OFF, quiet = true)
+        }
     }
+
+    private val speedSends = mutableMapOf<Long, Job>()
 
     /** Speeding alerts come from Traccar itself: the car's speedLimit attribute (in knots); 0 turns them off. */
     fun setSpeedLimit(car: CarInfo, kmh: Int) = viewModelScope.launch {
@@ -487,6 +501,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (kmh > 0) attrs + ("speedLimit" to JsonPrimitive(kmh / 1.852)) else attrs - "speedLimit"
         }
         if (!updated) say("Saved on this phone. Your account can't change the car on the server, so ask its admin to set the speed limit.")
+        // A MiCODUS tracker also watches the limit itself. Sent once the − / + taps settle, so only the last one goes.
+        if (car.kind == TrackerKind.MICODUS) {
+            speedSends.remove(car.device.id)?.cancel()
+            speedSends[car.device.id] = viewModelScope.launch {
+                delay(1_500)
+                if (kmh > 0) send(car, Action.SPEEDING_ON, quiet = true, speedKmh = kmh) else send(car, Action.SPEEDING_OFF, quiet = true)
+            }
+        }
     }
 
     // ---------- the car's details ----------
@@ -679,7 +701,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val places = _geofences.value.values.flatten().associate { it.id to it.name }
             val cleared = settings.value.clearedEventId
             val kinds = settings.value.alertKinds
-            val items = events
+            val items = AlertKind.withoutRepeatedSpeeding(events)
                 .filter { e -> e.id > cleared }
                 // Only the alert types switched on, the same as phone notifications
                 .filter { e -> AlertKind.of(e)?.key?.let { it in kinds } == true }
@@ -735,7 +757,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun sendAgain(entry: CommandEntry) {
         val car = cars.value.firstOrNull { it.device.id == entry.deviceId } ?: return
         val action = entry.action?.let { name -> Action.entries.firstOrNull { it.name == name } } ?: return
-        send(car, action)
+        send(car, action, speedKmh = car.prefs.speedLimit.takeIf { it > 0 } ?: TrackerCommands.DEFAULT_SPEED_KMH)
     }
 
     /** Where an alert happened, looked up once and remembered. */

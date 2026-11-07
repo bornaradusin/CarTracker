@@ -1,5 +1,7 @@
 package io.github.bornaradusin.cartracker.data
 
+import io.github.bornaradusin.cartracker.util.Format
+
 /** The kinds of alert someone can switch on or off. Each covers one or more Traccar events. */
 enum class AlertKind(val key: String, val title: String, val hint: String, val onByDefault: Boolean) {
     IGNITION("ignition", "Ignition on / off", "Every time the engine starts or stops", true),
@@ -33,6 +35,21 @@ enum class AlertKind(val key: String, val title: String, val hint: String, val o
                 else -> OTHER_ALARMS
             }
             else -> null
+        }
+
+        /**
+         * One speeding burst can come twice: from Traccar (over the car's limit) and from a MiCODUS
+         * tracker's own alarm. Keeps the first one per car within 3 minutes and drops the rest.
+         */
+        fun withoutRepeatedSpeeding(events: List<Event>): List<Event> {
+            val seen = mutableMapOf<Long, MutableList<Long>>()
+            val dropped = mutableSetOf<Long>()
+            events.filter { of(it) == SPEEDING }.sortedBy { it.id }.forEach { e ->
+                val at = Format.parse(e.eventTime)?.toEpochMilli() ?: return@forEach
+                val times = seen.getOrPut(e.deviceId) { mutableListOf() }
+                if (times.any { kotlin.math.abs(it - at) <= 180_000 }) dropped += e.id else times += at
+            }
+            return if (dropped.isEmpty()) events else events.filter { it.id !in dropped }
         }
     }
 }

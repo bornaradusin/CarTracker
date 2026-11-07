@@ -29,6 +29,10 @@ enum class Action(val label: String) {
     LOW_BATTERY_OFF("Low battery alert off"),
     UNPLUGGED_ON("Unplugged alert on"),
     UNPLUGGED_OFF("Unplugged alert off"),
+    SPEEDING_ON("Speeding alert on"),
+    SPEEDING_OFF("Speeding alert off"),
+    IGNITION_ON("Ignition alert on"),
+    IGNITION_OFF("Ignition alert off"),
     LOCATE("Locate now"),
     RESTART("Restart tracker"),
 }
@@ -50,6 +54,8 @@ data class UpdateRate(val drivingSeconds: Int, val parkedSeconds: Int) {
 
 object TrackerCommands {
 
+    const val DEFAULT_SPEED_KMH = 120
+
     fun kind(prefs: DevicePrefs, position: Position?): TrackerKind = when (prefs.trackerType) {
         "micodus" -> TrackerKind.MICODUS
         "generic" -> TrackerKind.GENERIC
@@ -60,8 +66,8 @@ object TrackerCommands {
     fun supports(kind: TrackerKind, action: Action, types: Set<String>): Boolean =
         command(kind, action, 0, types) != null
 
-    /** The command JSON for [action], or null when this tracker can't do it. */
-    fun command(kind: TrackerKind, action: Action, deviceId: Long, types: Set<String>): JsonObject? {
+    /** The command JSON for [action], or null when this tracker can't do it. [speedKmh] is the limit for [Action.SPEEDING_ON]. */
+    fun command(kind: TrackerKind, action: Action, deviceId: Long, types: Set<String>, speedKmh: Int = DEFAULT_SPEED_KMH): JsonObject? {
         if (kind == TrackerKind.MICODUS) {
             val text = when (action) {
                 // Traccar's Engine stop/resume never reach MiCODUS trackers: they ignore that JT808 message
@@ -78,6 +84,12 @@ object TrackerCommands {
                 Action.LOW_BATTERY_OFF -> "LVALM,OFF#"
                 Action.UNPLUGGED_ON -> "PWRALM,ON,0#"
                 Action.UNPLUGGED_OFF -> "PWRALM,OFF#"
+                // The last 0 means "report to the server only": the tracker's own default also sends SMS
+                Action.SPEEDING_ON -> "SPEED,ON,${speedKmh.coerceIn(1, 255)},0#"
+                Action.SPEEDING_OFF -> "SPEED,OFF#"
+                // 2: both when the ignition goes on and when it goes off
+                Action.IGNITION_ON -> "ACCALM,ON,2,0#"
+                Action.IGNITION_OFF -> "ACCALM,OFF#"
                 Action.LOCATE -> "WHERE#"
                 Action.RESTART -> "RESTART#"
             }
@@ -186,6 +198,10 @@ object TrackerCommands {
         Regex("LVALM\\s*[,:=]?\\s*OFF") to "Low battery alert turned off",
         Regex("PWRALM\\s*[,:=]?\\s*ON") to "Unplugged alert turned on",
         Regex("PWRALM\\s*[,:=]?\\s*OFF") to "Unplugged alert turned off",
+        Regex("^(SET\\s*)?(OVER\\s*)?SPEED\\w*\\s*(ALARM\\s*)?(IS\\s*)?[,:=]?\\s*(ON|OPEN|ENABLE)") to "Speeding alert turned on",
+        Regex("^(SET\\s*)?(OVER\\s*)?SPEED\\w*\\s*(ALARM\\s*)?(IS\\s*)?[,:=]?\\s*(OFF|CLOSE|DISABLE)") to "Speeding alert turned off",
+        Regex("ACCALM\\s*[,:=]?\\s*ON|ACC\\s*ALARM\\s*(IS\\s*)?(ON|OPEN|ENABLE)") to "Ignition alert turned on",
+        Regex("ACCALM\\s*[,:=]?\\s*OFF|ACC\\s*ALARM\\s*(IS\\s*)?(OFF|CLOSE|DISABLE)") to "Ignition alert turned off",
         Regex("^TIMER\\b.*OK") to "Update rate changed",
         Regex("^RESTART\\b|^RESET\\b.*OK") to "Tracker restarting",
     )
@@ -207,6 +223,10 @@ object TrackerCommands {
         "Low battery alert turned off" -> AlertKind.LOW_BATTERY.key to false
         "Unplugged alert turned on" -> AlertKind.UNPLUGGED.key to true
         "Unplugged alert turned off" -> AlertKind.UNPLUGGED.key to false
+        "Speeding alert turned on" -> AlertKind.SPEEDING.key to true
+        "Speeding alert turned off" -> AlertKind.SPEEDING.key to false
+        "Ignition alert turned on" -> AlertKind.IGNITION.key to true
+        "Ignition alert turned off" -> AlertKind.IGNITION.key to false
         else -> null
     }
 

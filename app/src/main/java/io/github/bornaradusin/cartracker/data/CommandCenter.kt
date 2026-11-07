@@ -88,9 +88,14 @@ class CommandCenter(
         return TrackerCommands.supports(target.kind, action, o.types)
     }
 
-    fun send(target: CommandTarget, action: Action, quiet: Boolean = false): Job = scope.launch {
+    fun send(
+        target: CommandTarget,
+        action: Action,
+        quiet: Boolean = false,
+        speedKmh: Int = TrackerCommands.DEFAULT_SPEED_KMH,
+    ): Job = scope.launch {
         val o = optionsFor(target.id)
-        val command = TrackerCommands.command(target.kind, action, target.id, o.types)
+        val command = TrackerCommands.command(target.kind, action, target.id, o.types, speedKmh)
         if (command == null) {
             say("${target.name}'s tracker can't do that.")
             return@launch
@@ -107,7 +112,8 @@ class CommandCenter(
         // MiCODUS trackers answer every command, so their settings wait for that answer.
         // Other trackers may never answer, so theirs change straight away.
         if (change == null || target.kind != TrackerKind.MICODUS) {
-            if (deliver(target, action.label, command, quiet, action = action) && change != null) applyChange(target, change)
+            val label = if (action == Action.SPEEDING_ON) "Speeding alert at $speedKmh km/h" else action.label
+            if (deliver(target, label, command, quiet, action = action) && change != null) applyChange(target, change)
             return@launch
         }
         // Fuel can wait for the tracker to reconnect (Traccar keeps the command); the rest can't

@@ -49,7 +49,8 @@ class AlertCenter(
         // The very first check only sets the starting point, so signing in doesn't replay old events.
         if (s.lastEventCheck == 0L) return@withLock
 
-        val fresh = events.filter { it.id > s.lastEventId }
+        // Looked at across the whole hour, so a repeat of a speeding alert already shown stays quiet
+        val fresh = AlertKind.withoutRepeatedSpeeding(events).filter { it.id > s.lastEventId }
             .filter { event -> AlertKind.of(event)?.key?.let { it in s.alertKinds } == true }
             .filter { event -> !(appVisible && event.type == "commandResult") }
             .sortedBy { it.id }

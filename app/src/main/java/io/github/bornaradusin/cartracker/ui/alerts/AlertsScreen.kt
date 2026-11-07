@@ -222,6 +222,8 @@ private fun commandIcon(entry: CommandEntry): ImageVector = when (entry.action) 
     Action.ARM.name, Action.DISARM.name, Action.AUTO_ARM_ON.name, Action.AUTO_ARM_OFF.name -> Ic.shieldCheck
     Action.LOCATE.name -> Ic.crosshair
     Action.RESTART.name -> Ic.refresh
+    Action.SPEEDING_ON.name, Action.SPEEDING_OFF.name -> Ic.zap
+    Action.IGNITION_ON.name, Action.IGNITION_OFF.name -> Ic.key
     null -> Ic.terminal
     else -> Ic.bell
 }
