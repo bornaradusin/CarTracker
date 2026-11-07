@@ -148,7 +148,13 @@ def main():
     deadline = time.time() + 120
     while time.time() < deadline and len(fields) < 3:
         time.sleep(3)
-        fields = [centre for _, _, cls, centre in nodes() if cls.endswith("EditText")]
+        found = nodes()
+        # A slow emulator can show "<system app> isn't responding" on top: wait it out
+        hang = [centre for text, _, _, centre in found if text == "Wait"]
+        if hang and any("isn't responding" in (text or "") for text, _, _, _ in found):
+            tap_at(*hang[0])
+            continue
+        fields = [centre for _, _, cls, centre in found if cls.endswith("EditText")]
     if len(fields) < 3:
         raise SystemExit("Sign-in fields not found")
     # Look the boxes up again each time: hints appear under them as you type and move the rest down
