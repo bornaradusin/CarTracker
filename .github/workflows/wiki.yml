@@ -67,6 +67,9 @@ jobs:
 
       - name: Screenshots
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          # A test run also prints the shared trip files into the log, to look at them
+          SHARE_DUMP: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish && '1' || '' }}
         with:
           api-level: 34
           target: google_apis

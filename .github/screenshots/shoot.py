@@ -278,6 +278,13 @@ def try_share():
             with open(os.path.join(out, name), "wb") as f:
                 f.write(data)
             print(f"share {option}: {len(data)} bytes in {took:.0f} s")
+            if os.environ.get("SHARE_DUMP"):
+                import base64
+                print(f"=====BEGIN {name}=====")
+                encoded = base64.b64encode(data).decode()
+                for i in range(0, len(encoded), 4000):
+                    print(encoded[i:i + 4000])
+                print(f"=====END {name}=====")
             # Close the share sheet
             shell("input", "keyevent", "4")
             time.sleep(2)
