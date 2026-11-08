@@ -209,6 +209,7 @@ def main():
     time.sleep(2)
     tap(" · top ", exact=False)
     shot("replay", settle=8)
+    try_share()
     shell("input", "keyevent", "4")
     time.sleep(2)
 
@@ -248,6 +249,45 @@ def main():
     shot("alerts-dark", settle=3)
     tap("More")
     shot("more-dark", settle=2)
+
+
+def try_share():
+    """
+    Shares the trip as an animation and as a picture, the way you would, and keeps both with the run
+    (not in the wiki) so they can be looked at. A failure here is reported but doesn't stop the screenshots.
+    """
+    out = os.path.join(os.path.dirname(os.path.abspath(OUT)), "share")
+    os.makedirs(out, exist_ok=True)
+    for option, name in (("Animation", "trip.gif"), ("Picture", "trip.png")):
+        try:
+            tap("Share this trip")
+            tap(option)
+            started = time.time()
+            while time.time() - started < 240:
+                labels = [t or d for t, d, _, _ in nodes()]
+                if not any(l == "Drawing the map…" or l.startswith("Making the animation") for l in labels):
+                    break
+                time.sleep(2)
+            took = time.time() - started
+            problems = [l for l in labels if l.startswith("Couldn't")]
+            if problems:
+                print(f"share {option}: failed after {took:.0f} s: {problems[0]}")
+                tap("Close")
+                continue
+            data = adb("exec-out", "run-as", PACKAGE, "cat", f"cache/shared/{name}", check=False)
+            with open(os.path.join(out, name), "wb") as f:
+                f.write(data)
+            print(f"share {option}: {len(data)} bytes in {took:.0f} s")
+            # Close the share sheet
+            shell("input", "keyevent", "4")
+            time.sleep(2)
+        except BaseException as e:
+            print(f"share {option}: stopped: {e}")
+            for text, desc, cls, centre in nodes():
+                if text or desc:
+                    print("  on screen:", cls.split(".")[-1], repr(text or desc), centre)
+            if any((t or d) == "Close" for t, d, _, _ in nodes()):
+                tap("Close")
 
 
 def explain_failure():
