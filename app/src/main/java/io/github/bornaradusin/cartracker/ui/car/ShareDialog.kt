@@ -105,7 +105,7 @@ internal fun ShareDialog(vm: AppViewModel, info: CarInfo, onSendSpot: () -> Unit
 }
 
 @Composable
-private fun ShareOption(icon: ImageVector, title: String, hint: String, enabled: Boolean, onClick: () -> Unit) {
+internal fun ShareOption(icon: ImageVector, title: String, hint: String, enabled: Boolean, onClick: () -> Unit) {
     val c = LocalAppColors.current
     Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(14.dp), color = c.surface2, contentColor = c.ink, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.heightIn(min = 56.dp).padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

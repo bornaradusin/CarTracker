@@ -21,7 +21,10 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -31,14 +34,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -56,7 +64,13 @@ import io.github.bornaradusin.cartracker.ui.map.TrackerMap
 import io.github.bornaradusin.cartracker.ui.theme.Ic
 import io.github.bornaradusin.cartracker.ui.theme.LocalAppColors
 import io.github.bornaradusin.cartracker.util.Format
+import io.github.bornaradusin.cartracker.ui.car.ShareOption
+import io.github.bornaradusin.cartracker.ui.share.SharedFiles
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import org.maplibre.android.geometry.LatLng
 import java.time.Instant
 import kotlin.math.asin
@@ -84,6 +98,14 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
     var playing by remember(points) { mutableStateOf(points.size > 1) }
     var speed by remember { mutableIntStateOf(4) }
     var panelHeight by remember { mutableIntStateOf(0) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var shareOpen by remember { mutableStateOf(false) }
+    var making by remember { mutableStateOf<ShareKind?>(null) }
+    var madeSoFar by remember { mutableFloatStateOf(0f) }
+    var shareJob by remember { mutableStateOf<Job?>(null) }
+    var shareProblem by remember { mutableStateOf<String?>(null) }
+    val canShare = !state.loading && state.error == null && points.size >= 2
 
     LaunchedEffect(playing, speed, points) {
         if (!playing || points.size < 2) return@LaunchedEffect
@@ -135,6 +157,22 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
                         color = c.ink,
                     )
                     Text(car?.device?.name ?: "", style = MaterialTheme.typography.bodySmall, color = c.muted)
+                }
+            }
+            Surface(
+                onClick = {
+                    shareProblem = null
+                    shareOpen = true
+                },
+                enabled = canShare,
+                shape = CircleShape,
+                color = c.surface,
+                contentColor = c.ink,
+                shadowElevation = 4.dp,
+                modifier = Modifier.size(48.dp).semantics { contentDescription = "Share this trip" },
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Ic.share, null, modifier = Modifier.size(22.dp).alpha(if (canShare) 1f else 0.35f))
                 }
             }
         }
@@ -214,6 +252,114 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
             }
         }
     }
+    if (shareOpen) {
+        fun make(kind: ShareKind) {
+            val trip = TripShare.Trip(
+                car = car?.device?.name ?: "Car",
+                icon = car?.icon ?: "hatchback",
+                carColor = car?.carColor ?: Palette.CarDefault,
+                glowColor = car?.glowColor ?: Palette.CircleDefault,
+                points = points,
+                from = from,
+                to = to,
+            )
+            val look = TripShare.Look(
+                style = MapStyle.named(settings.mapStyle),
+                dark = c.dark,
+                background = c.surface.toArgb(),
+                ink = c.ink.toArgb(),
+                muted = c.muted.toArgb(),
+                accent = c.accentText.toArgb(),
+                line = c.line.toArgb(),
+            )
+            shareProblem = null
+            madeSoFar = 0f
+            making = kind
+            shareJob = scope.launch {
+                try {
+                    val file = when (kind) {
+                        ShareKind.ANIMATION -> TripShare.animation(context, trip, look) { madeSoFar = it }
+                        ShareKind.PICTURE -> TripShare.picture(context, trip, look)
+                    }
+                    shareOpen = false
+                    SharedFiles.share(context, file, kind.mime, TripShare.title(trip))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    shareProblem = when (e) {
+                        is java.io.IOException -> "Couldn't load the map. Check your connection and try again."
+                        else -> "Couldn't make the ${kind.noun}. Try again."
+                    }
+                } finally {
+                    making = null
+                    shareJob = null
+                }
+            }
+        }
+        TripShareDialog(
+            making = making,
+            progress = madeSoFar,
+            problem = shareProblem,
+            onMake = ::make,
+            onCancel = { shareJob?.cancel() },
+            onDismiss = { shareOpen = false },
+        )
+    }
+}
+
+private enum class ShareKind(val mime: String, val noun: String) {
+    ANIMATION("image/gif", "animation"),
+    PICTURE("image/png", "picture"),
+}
+
+@Composable
+private fun TripShareDialog(
+    making: ShareKind?,
+    progress: Float,
+    problem: String?,
+    onMake: (ShareKind) -> Unit,
+    onCancel: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val c = LocalAppColors.current
+    AlertDialog(
+        onDismissRequest = { if (making == null) onDismiss() },
+        containerColor = c.surface,
+        title = { Text("Share this trip", color = c.ink) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (making == null) {
+                    ShareOption(Ic.play, "Animation", "The car driving the route, as a GIF that plays in chats", enabled = true) { onMake(ShareKind.ANIMATION) }
+                    ShareOption(Ic.image, "Picture", "The whole route with the trip's numbers", enabled = true) { onMake(ShareKind.PICTURE) }
+                    Text(
+                        "Nothing is kept on your phone: it's deleted once you've sent it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.muted,
+                    )
+                    problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.warnText) }
+                } else {
+                    val drawing = making == ShareKind.ANIMATION && progress > 0f
+                    Text(
+                        if (drawing) "Making the animation… ${(progress * 100).roundToInt()}%" else "Drawing the map…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = c.ink,
+                    )
+                    if (drawing) {
+                        LinearProgressIndicator(progress = { progress }, color = c.accentOutline, trackColor = c.line, modifier = Modifier.fillMaxWidth())
+                    } else {
+                        LinearProgressIndicator(color = c.accentOutline, trackColor = c.line, modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (making != null) {
+                TextButton(onClick = onCancel) { Text("Cancel", color = c.ink2) }
+            } else {
+                TextButton(onClick = onDismiss) { Text("Close", color = c.ink2) }
+            }
+        },
+    )
 }
 
 /** What the route's colours mean. */

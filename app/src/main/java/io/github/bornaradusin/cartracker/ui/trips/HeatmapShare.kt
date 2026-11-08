@@ -1,8 +1,6 @@
 package io.github.bornaradusin.cartracker.ui.trips
 
-import android.content.ClipData
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.LinearGradient
@@ -12,7 +10,7 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import android.text.TextPaint
 import android.text.TextUtils
-import androidx.core.content.FileProvider
+import io.github.bornaradusin.cartracker.ui.share.SharedFiles
 import java.io.File
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -149,23 +147,12 @@ object HeatmapShare {
         return out
     }
 
-    /** Saves the picture where the share sheet can read it, replacing the last one. */
+    /** Saves the picture where the share sheet can read it; it's deleted once it has been sent. */
     fun save(context: Context, picture: Bitmap): File {
-        val dir = File(context.cacheDir, "shared").apply { mkdirs() }
-        val file = File(dir, "heatmap.png")
+        val file = SharedFiles.newFile(context, "heatmap.png")
         file.outputStream().use { picture.compress(Bitmap.CompressFormat.PNG, 100, it) }
         return file
     }
 
-    fun share(context: Context, file: File, title: String) {
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = "image/png"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_TITLE, title)
-            clipData = ClipData.newRawUri(title, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(Intent.createChooser(send, "Share heatmap"))
-    }
+    fun share(context: Context, file: File, title: String) = SharedFiles.share(context, file, "image/png", title)
 }

@@ -48,6 +48,7 @@ object Ic {
     val unlock = line("unlock", "M6 11h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z", "M8 11V7a4 4 0 0 1 7.8-1.3")
     val shieldCheck = line("shieldCheck", "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", "M9 12l2 2 4-4")
     val navigation = line("navigation", "M3 11l19-9-9 19-2-8z")
+    val image = line("image", "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z", circle(9f, 9.5f, 1.5f), "M21 15l-5-5L5 20")
     val share = line("share", circle(18f, 5f, 3f), circle(6f, 12f, 3f), circle(18f, 19f, 3f), "M8.6 13.5l6.8 4M15.4 6.5l-6.8 4")
     val route = line("route", circle(6f, 19f, 2f), circle(18f, 5f, 2f), "M8 19h8.5a3.5 3.5 0 0 0 0-7h-9a3.5 3.5 0 0 1 0-7H16")
     val menu = line("menu", "M4 6h16M4 12h16M4 18h16")

@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         container.alerts.appVisible = true
         container.live.acquire(HOLDER)
+        io.github.bornaradusin.cartracker.ui.share.SharedFiles.appBack(this, container.scope)
     }
 
     override fun onStop() {
