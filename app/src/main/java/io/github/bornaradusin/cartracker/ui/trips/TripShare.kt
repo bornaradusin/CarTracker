@@ -61,8 +61,10 @@ object TripShare {
     private const val WIDTH = 720
     private const val MAP_DP = 360
     private const val PIXEL_RATIO = 2f // WIDTH / MAP_DP
-    private const val FPS = 20
-    private const val DRAW_SECONDS = 8
+    /** The replay's pace at 1×: one recorded point every 0.4 s. */
+    private const val SECONDS_PER_POINT = 0.4
+    private const val MIN_SECONDS = 3.0
+    private const val MAX_SECONDS = 120.0
     private const val START_HOLD_CS = 70
     private const val END_HOLD_CS = 300
 
@@ -88,6 +90,10 @@ object TripShare {
 
     private val dayFormat get() = DateTimeFormatter.ofPattern("EEE d MMM yyyy")
 
+    /** How long the car takes to drive the route at [speed] (1, 4 or 16, as in the replay), in seconds. */
+    fun seconds(points: Int, speed: Int): Double =
+        ((points - 1).coerceAtLeast(1) * SECONDS_PER_POINT / speed.coerceAtLeast(1)).coerceIn(MIN_SECONDS, MAX_SECONDS)
+
     fun title(trip: Trip) = "${trip.car} · trip on ${trip.from.atZone(ZoneId.systemDefault()).format(dayFormat)}"
 
     /** The whole route with the trip's numbers, as a PNG ready to share. */
@@ -101,11 +107,17 @@ object TripShare {
         }
     }
 
-    /** The car driving the route, as a looping GIF ready to share. [progress] goes from 0 to 1. */
-    suspend fun animation(context: Context, trip: Trip, look: Look, progress: (Float) -> Unit): File {
+    /**
+     * The car driving the route at [speed] (as the replay's 1×, 4× or 16×), as a looping GIF ready to
+     * share. [progress] goes from 0 to 1.
+     */
+    suspend fun animation(context: Context, trip: Trip, look: Look, speed: Int, progress: (Float) -> Unit): File {
         val scene = Scene.load(context, trip, look)
         return withContext(Dispatchers.Default) {
-            val frames = FPS * DRAW_SECONDS
+            val seconds = seconds(trip.points.size, speed)
+            // 20 pictures a second; 10 for the long ones, so the file stays a size chats take
+            val fps = if (seconds <= 60) 20 else 10
+            val frames = (seconds * fps).roundToInt().coerceAtLeast(2)
             val pixels = IntArray(scene.width * scene.height)
 
             // The palette comes from the finished picture: map, whole route, pin and numbers
@@ -122,7 +134,7 @@ object TripShare {
                     val final = k == frames
                     val frame = scene.render(k / frames.toFloat(), final)
                     frame.getPixels(pixels, 0, scene.width, 0, 0, scene.width, scene.height)
-                    gif.frame(pixels, if (k == 0) START_HOLD_CS else 100 / FPS)
+                    gif.frame(pixels, if (k == 0) START_HOLD_CS else 100 / fps)
                     progress((k + 1) / (frames + 1f))
                 }
                 gif.finish(END_HOLD_CS)
@@ -160,7 +172,7 @@ object TripShare {
         }
         private val timed = recorded != null
 
-        /** The car moves through the points in step with their times, or evenly if there are none. */
+        /** When each point was recorded, for the clock; evenly spread if the times are missing. */
         private val times: LongArray = recorded ?: LongArray(points.size) { it.toLong() }
 
         // Text sizes and the panel underneath
@@ -228,9 +240,12 @@ object TripShare {
             drawnPoint = PointF(spots[0].x, spots[0].y)
         }
 
-        /** The trip at [progress] (0 to 1) of its time. [final] shows the trip's totals. */
+        /**
+         * The trip at [progress] (0 to 1) of the way through its points, as the replay plays them.
+         * [final] shows the trip's totals.
+         */
         fun render(progress: Float, final: Boolean): Bitmap {
-            val (i, f) = if (final) points.lastIndex to 0f else locate(progress)
+            val (i, f) = if (final) points.lastIndex to 0f else at(progress)
             advance(i, f)
 
             canvas.drawColor(look.background, PorterDuff.Mode.SRC)
@@ -300,16 +315,11 @@ object TripShare {
             return colours.toIntArray()
         }
 
-        /** Which point the car is at, and how far on to the next, at [progress] of the trip's time. */
-        private fun locate(progress: Float): Pair<Int, Float> {
-            val target = times.first() + ((times.last() - times.first()) * progress.toDouble()).toLong()
-            var i = drawnTo.coerceIn(0, points.lastIndex)
-            if (times[i] > target) i = 0
-            while (i < points.lastIndex && times[i + 1] <= target) i++
-            if (i >= points.lastIndex) return points.lastIndex to 0f
-            val span = times[i + 1] - times[i]
-            val f = if (span <= 0) 0f else ((target - times[i]).toFloat() / span).coerceIn(0f, 1f)
-            return i to f
+        /** Which point the car is at, and how far on to the next, at [progress] of the way through. */
+        private fun at(progress: Float): Pair<Int, Float> {
+            val position = progress.coerceIn(0f, 1f) * points.lastIndex
+            val i = position.toInt().coerceAtMost(points.lastIndex)
+            return if (i >= points.lastIndex) points.lastIndex to 0f else i to (position - i)
         }
 
         private fun spotAt(i: Int, f: Float): PointF {

@@ -64,7 +64,7 @@ Tap a trip to replay it on the map.
 
 Tap the **share** button at the top right of a replay:
 
-- **Animation**: the car drives the route in about 8 seconds, with the time, speed and distance counting along underneath, then the trip's totals. It's a GIF, so it plays and loops by itself in WhatsApp and most chats.
+- **Animation**: pick a speed, **1×, 4× or 16×**, the same as the replay's (each button shows how long it will run, up to 2 minutes). The car drives the route with the time, speed and distance counting along underneath, then the trip's totals. It's a GIF, so it plays and loops by itself in WhatsApp and most chats.
 - **Picture**: the whole route with the trip's duration, top speed and distance.
 
 The map is drawn in your chosen map style. Nothing is kept on your phone: the picture or animation is deleted shortly after you've sent it. The same goes for [heatmap](#heatmap) pictures.

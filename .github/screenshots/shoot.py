@@ -258,7 +258,7 @@ def try_share():
     """
     out = os.path.join(os.path.dirname(os.path.abspath(OUT)), "share")
     os.makedirs(out, exist_ok=True)
-    for option, name in (("Animation", "trip.gif"), ("Picture", "trip.png")):
+    for option, name in (("Animation at 16×", "trip.gif"), ("Picture", "trip.png")):
         try:
             tap("Share this trip")
             tap(option)

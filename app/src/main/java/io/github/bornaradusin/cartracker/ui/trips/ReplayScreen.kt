@@ -101,6 +101,7 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var shareOpen by remember { mutableStateOf(false) }
+    var shareSpeed by remember { mutableIntStateOf(4) }
     var making by remember { mutableStateOf<ShareKind?>(null) }
     var madeSoFar by remember { mutableFloatStateOf(0f) }
     var shareJob by remember { mutableStateOf<Job?>(null) }
@@ -162,6 +163,7 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
             Surface(
                 onClick = {
                     shareProblem = null
+                    shareSpeed = speed
                     shareOpen = true
                 },
                 enabled = canShare,
@@ -278,7 +280,7 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
             shareJob = scope.launch {
                 try {
                     val file = when (kind) {
-                        ShareKind.ANIMATION -> TripShare.animation(context, trip, look) { madeSoFar = it }
+                        ShareKind.ANIMATION -> TripShare.animation(context, trip, look, shareSpeed) { madeSoFar = it }
                         ShareKind.PICTURE -> TripShare.picture(context, trip, look)
                     }
                     shareOpen = false
@@ -297,6 +299,9 @@ fun ReplayScreen(vm: AppViewModel, deviceId: Long, fromMillis: Long, toMillis: L
             }
         }
         TripShareDialog(
+            points = points.size,
+            speed = shareSpeed,
+            onSpeed = { shareSpeed = it },
             making = making,
             progress = madeSoFar,
             problem = shareProblem,
@@ -314,6 +319,9 @@ private enum class ShareKind(val mime: String, val noun: String) {
 
 @Composable
 private fun TripShareDialog(
+    points: Int,
+    speed: Int,
+    onSpeed: (Int) -> Unit,
     making: ShareKind?,
     progress: Float,
     problem: String?,
@@ -329,7 +337,38 @@ private fun TripShareDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (making == null) {
-                    ShareOption(Ic.play, "Animation", "The car driving the route, as a GIF that plays in chats", enabled = true) { onMake(ShareKind.ANIMATION) }
+                    // The animation: tapping a speed makes it, as fast as the replay plays at that speed
+                    Surface(shape = RoundedCornerShape(14.dp), color = c.surface2, contentColor = c.ink, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Icon(Ic.play, null, tint = c.accentText, modifier = Modifier.size(20.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Animation", style = MaterialTheme.typography.labelLarge, color = c.ink)
+                                    Text("The car driving the route, as a GIF that plays in chats. Pick a speed:", style = MaterialTheme.typography.bodySmall, color = c.muted)
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                listOf(1, 4, 16).forEach { s ->
+                                    val on = s == speed
+                                    Surface(
+                                        onClick = {
+                                            onSpeed(s)
+                                            onMake(ShareKind.ANIMATION)
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (on) c.accent else c.surface,
+                                        contentColor = if (on) c.onAccent else c.ink,
+                                        modifier = Modifier.weight(1f).heightIn(min = 52.dp).semantics { contentDescription = "Animation at $s×" },
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.padding(vertical = 6.dp)) {
+                                            Text("$s×", fontWeight = FontWeight.SemiBold)
+                                            Text(animationLength(points, s), style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     ShareOption(Ic.image, "Picture", "The whole route with the trip's numbers", enabled = true) { onMake(ShareKind.PICTURE) }
                     Text(
                         "Nothing is kept on your phone: it's deleted once you've sent it.",
@@ -360,6 +399,12 @@ private fun TripShareDialog(
             }
         },
     )
+}
+
+/** How long the animation runs at [speed], as the chip shows it. */
+private fun animationLength(points: Int, speed: Int): String {
+    val seconds = TripShare.seconds(points, speed).roundToInt()
+    return if (seconds < 60) "$seconds s" else "${seconds / 60} min${if (seconds % 60 >= 10) " ${seconds % 60} s" else ""}"
 }
 
 /** What the route's colours mean. */
