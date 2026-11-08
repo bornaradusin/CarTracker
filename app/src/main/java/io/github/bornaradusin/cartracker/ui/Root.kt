@@ -199,6 +199,10 @@ private fun MainShell(vm: AppViewModel, openAlertsSignal: Int) {
         )
     }
 
+    val updateState by vm.update.collectAsStateWithLifecycle()
+    val updatePrompt by vm.updatePrompt.collectAsStateWithLifecycle()
+    if (updatePrompt) io.github.bornaradusin.cartracker.ui.more.UpdateDialog(vm, updateState)
+
     val crash by vm.lastCrash.collectAsStateWithLifecycle()
     crash?.let { text ->
         val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current

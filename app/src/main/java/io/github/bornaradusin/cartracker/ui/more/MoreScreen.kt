@@ -255,6 +255,27 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
             }
         }
 
+        SectionCard("Updates") {
+            val update by vm.update.collectAsStateWithLifecycle()
+            ToggleRow(
+                "Check for updates",
+                "Looks on GitHub about once a day and offers a newer CarTracker, installed from here",
+                checked = settings.updateCheck,
+                onChange = { vm.setUpdateCheck(it) },
+            )
+            val ready = (update as? io.github.bornaradusin.cartracker.ui.UpdateState.Available)?.update
+            ChevronRow(
+                if (ready != null) "Update to ${ready.version}" else "Check now",
+                when (update) {
+                    is io.github.bornaradusin.cartracker.ui.UpdateState.Available -> "A newer CarTracker is ready"
+                    io.github.bornaradusin.cartracker.ui.UpdateState.UpToDate -> "You have the newest version"
+                    else -> null
+                },
+                value = BuildConfig.VERSION_NAME,
+                divider = false,
+            ) { if (ready != null) vm.openUpdate() else vm.checkForUpdate(manual = true) }
+        }
+
         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("CarTracker ${BuildConfig.VERSION_NAME} · made by bornaradusin", style = MaterialTheme.typography.bodySmall, color = c.muted)
             TextButton(onClick = {

@@ -86,6 +86,11 @@ data class AppSettings(
     val clearedEventId: Long = 0,
     /** Ask for a fingerprint (or the phone's PIN) before cutting or restoring fuel. */
     val fuelFingerprint: Boolean = true,
+    /** Look on GitHub for a newer CarTracker, about once a day. */
+    val updateCheck: Boolean = true,
+    val lastUpdateCheck: Long = 0,
+    /** The version the person said "not now" to: it's not offered again by itself, only in More. */
+    val updateLater: String = "",
 ) {
     val signedIn: Boolean get() = token != null && server.isNotBlank()
     fun prefs(deviceId: Long): DevicePrefs = devicePrefs[deviceId] ?: DevicePrefs()
@@ -111,6 +116,9 @@ class SettingsStore(private val context: Context) {
         val lastSeenEventId = longPreferencesKey("last_seen_event_id")
         val clearedEventId = longPreferencesKey("cleared_event_id")
         val fuelFingerprint = booleanPreferencesKey("fuel_fingerprint")
+        val updateCheck = booleanPreferencesKey("update_check")
+        val lastUpdateCheck = longPreferencesKey("last_update_check")
+        val updateLater = stringPreferencesKey("update_later")
     }
 
     private val prefsSerializer = MapSerializer(Long.serializer(), DevicePrefs.serializer())
@@ -135,6 +143,9 @@ class SettingsStore(private val context: Context) {
             lastSeenEventId = p[K.lastSeenEventId] ?: 0,
             clearedEventId = p[K.clearedEventId] ?: 0,
             fuelFingerprint = p[K.fuelFingerprint] ?: true,
+            updateCheck = p[K.updateCheck] ?: true,
+            lastUpdateCheck = p[K.lastUpdateCheck] ?: 0,
+            updateLater = p[K.updateLater].orEmpty(),
         )
     }
 
@@ -166,6 +177,9 @@ class SettingsStore(private val context: Context) {
     suspend fun setAdvancedCommands(value: Boolean) = context.dataStore.edit { it[K.advanced] = value }
     suspend fun setSelectedDevice(id: Long) = context.dataStore.edit { it[K.selected] = id }
     suspend fun setFuelFingerprint(value: Boolean) = context.dataStore.edit { it[K.fuelFingerprint] = value }
+    suspend fun setUpdateCheck(value: Boolean) = context.dataStore.edit { it[K.updateCheck] = value }
+    suspend fun updateChecked(at: Long) = context.dataStore.edit { it[K.lastUpdateCheck] = at }
+    suspend fun setUpdateLater(version: String) = context.dataStore.edit { it[K.updateLater] = version }
     suspend fun setLastSeenEvent(id: Long) = context.dataStore.edit { it[K.lastSeenEventId] = id }
 
     /** Hides every alert up to [id] and marks them seen. */

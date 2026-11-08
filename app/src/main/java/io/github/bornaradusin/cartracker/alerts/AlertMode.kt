@@ -66,6 +66,8 @@ class AlertWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        // Just updated: the downloaded APK isn't needed any more
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) runCatching { io.github.bornaradusin.cartracker.data.Updates.clean(context) }
         val pending = goAsync()
         val c = context.container
         c.scope.launch {

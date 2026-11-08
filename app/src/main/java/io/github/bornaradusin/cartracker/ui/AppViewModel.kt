@@ -28,6 +28,8 @@ import io.github.bornaradusin.cartracker.data.TrackerKind
 import io.github.bornaradusin.cartracker.data.Trip
 import io.github.bornaradusin.cartracker.data.UpdateRate
 import io.github.bornaradusin.cartracker.data.VoltPoint
+import io.github.bornaradusin.cartracker.data.AppUpdate
+import io.github.bornaradusin.cartracker.data.Updates
 import kotlinx.coroutines.CancellationException
 import io.github.bornaradusin.cartracker.data.str
 import io.github.bornaradusin.cartracker.ui.map.CarImages
@@ -47,6 +49,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.sample
@@ -161,6 +164,21 @@ sealed interface ServerCheck {
 
 
 @OptIn(FlowPreview::class)
+/** How often the app looks for an update by itself: about once a day. */
+private const val UPDATE_EVERY_MS = 20 * 3600 * 1000L
+
+/** Where an update from GitHub is at. */
+sealed interface UpdateState {
+    data object Idle : UpdateState
+    data object Checking : UpdateState
+    data object UpToDate : UpdateState
+    data class Available(val update: AppUpdate) : UpdateState
+    data class Downloading(val update: AppUpdate, val progress: Float) : UpdateState
+    /** Downloaded, but Android needs CarTracker allowed to install apps first. */
+    data class NeedsPermission(val update: AppUpdate, val apk: java.io.File) : UpdateState
+    data class Failed(val message: String, val update: AppUpdate? = null) : UpdateState
+}
+
 class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val c = application.container
@@ -1033,6 +1051,129 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setMapStyle(value: String) = viewModelScope.launch { c.settings.setMapStyle(value) }
     fun setAdvanced(value: Boolean) = viewModelScope.launch { c.settings.setAdvancedCommands(value) }
     fun setFuelFingerprint(value: Boolean) = viewModelScope.launch { c.settings.setFuelFingerprint(value) }
+
+    // ---------- updates from GitHub ----------
+
+    private val updates = Updates(application)
+    private val _update = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    val update: StateFlow<UpdateState> = _update.asStateFlow()
+
+    /** The update dialog is up: an update found by itself (unless it was put off), or one asked about. */
+    private val _updatePrompt = MutableStateFlow(false)
+    val updatePrompt: StateFlow<Boolean> = _updatePrompt.asStateFlow()
+    private var updateJob: Job? = null
+
+    init {
+        // About once a day, when the app opens
+        viewModelScope.launch {
+            val s = settings.first { it.token != "loading" }
+            if (s.updateCheck && System.currentTimeMillis() - s.lastUpdateCheck > UPDATE_EVERY_MS) checkForUpdate(manual = false)
+        }
+    }
+
+    fun setUpdateCheck(value: Boolean) = viewModelScope.launch { c.settings.setUpdateCheck(value) }
+
+    /** Looks on GitHub. [manual]: asked for in More, so the dialog shows what was found, even nothing. */
+    fun checkForUpdate(manual: Boolean) {
+        if (_update.value is UpdateState.Checking || _update.value is UpdateState.Downloading) {
+            if (manual) _updatePrompt.value = true
+            return
+        }
+        if (manual) _updatePrompt.value = true
+        updateJob = viewModelScope.launch {
+            _update.value = UpdateState.Checking
+            _update.value = try {
+                val found = updates.check()
+                c.settings.updateChecked(System.currentTimeMillis())
+                if (found == null) {
+                    UpdateState.UpToDate
+                } else {
+                    if (!manual && found.version != settings.value.updateLater) _updatePrompt.value = true
+                    UpdateState.Available(found)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (manual) UpdateState.Failed("Couldn't reach GitHub. Check the connection and try again.") else UpdateState.Idle
+            }
+        }
+    }
+
+    private fun pendingUpdate(): AppUpdate? = when (val s = _update.value) {
+        is UpdateState.Available -> s.update
+        is UpdateState.Downloading -> s.update
+        is UpdateState.NeedsPermission -> s.update
+        is UpdateState.Failed -> s.update
+        else -> null
+    }
+
+    /** Downloads the update, checks it and opens Android's installer. */
+    fun startUpdate() {
+        val update = pendingUpdate() ?: return
+        if (_update.value is UpdateState.Downloading) return
+        updateJob = viewModelScope.launch {
+            _update.value = UpdateState.Downloading(update, 0f)
+            try {
+                val apk = updates.download(update) { p -> _update.value = UpdateState.Downloading(update, p) }
+                install(update, apk)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _update.value = UpdateState.Failed(
+                    if (e.message?.contains("checksum") == true) "The download was damaged. Try again." else "The download didn't finish. Try again.",
+                    update,
+                )
+            }
+        }
+    }
+
+    private fun install(update: AppUpdate, apk: java.io.File) {
+        if (!updates.canInstall()) {
+            _update.value = UpdateState.NeedsPermission(update, apk)
+            return
+        }
+        // Still offered, in case the installer is closed without updating
+        _update.value = UpdateState.Available(update)
+        _updatePrompt.value = false
+        runCatching { updates.install(apk) }.onFailure {
+            _update.value = UpdateState.Failed("Android's installer didn't open. Try again.", update)
+            _updatePrompt.value = true
+        }
+    }
+
+    /** The switch that lets CarTracker install its update. */
+    fun allowInstalls() {
+        runCatching { getApplication<Application>().startActivity(updates.installPermission()) }
+    }
+
+    /** Back from that switch: on with the install if it's now allowed. */
+    fun continueUpdate() {
+        val s = _update.value as? UpdateState.NeedsPermission ?: return
+        if (updates.canInstall()) install(s.update, s.apk)
+    }
+
+    fun cancelUpdate() {
+        val update = pendingUpdate()
+        updateJob?.cancel()
+        _update.value = update?.let { UpdateState.Available(it) } ?: UpdateState.Idle
+    }
+
+    /** "Not now": this version isn't offered again by itself; More still has it. */
+    fun updateLater() {
+        pendingUpdate()?.let { u -> viewModelScope.launch { c.settings.setUpdateLater(u.version) } }
+        if (_update.value is UpdateState.Downloading) cancelUpdate()
+        _updatePrompt.value = false
+    }
+
+    fun openUpdate() {
+        _updatePrompt.value = true
+    }
+
+    fun closeUpdate() {
+        if (_update.value is UpdateState.Downloading) return
+        _updatePrompt.value = false
+        if (_update.value is UpdateState.UpToDate || _update.value is UpdateState.Failed && pendingUpdate() == null) _update.value = UpdateState.Idle
+    }
     fun setLiveAlerts(value: Boolean) = viewModelScope.launch { c.settings.setLiveAlerts(value) }
     fun setAlertFilter(kind: AlertKind, on: Boolean) = viewModelScope.launch { c.settings.setAlertKind(kind, on) }
 

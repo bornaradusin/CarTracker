@@ -47,6 +47,8 @@ class CarTrackerApp : Application() {
             previous?.uncaughtException(thread, error)
         }
         container = AppContainer(this)
+        // A downloaded update is deleted once it's installed (or the install was given up)
+        Thread { runCatching { io.github.bornaradusin.cartracker.data.Updates.cleanLeftovers(this) } }.start()
         Notifier.createChannels(this)
         MapLibre.getInstance(this)
         // Map tiles say who's asking, as the free map servers ask.
