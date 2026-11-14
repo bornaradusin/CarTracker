@@ -30,7 +30,7 @@
 | [Controls](Controls) | Fuel cut (with fingerprint), alarm, tracker alerts, speed limit, update rate and every other command |
 | [Trips](Trips) | The last 7 days of driving, replays coloured by speed, stats by week, month and year, and a heatmap |
 | [Battery](Battery) | The car battery's voltage over a day or a week, and a low-battery warning |
-| [Service and costs](Service-and-costs) | Your LubeLogger reminders, costs, fuel and records inside the app |
+| [Service and costs](Service-and-costs) | Your LubeLogger reminders, costs, fuel and records in their own tab, where you can add and change them too |
 | [Alerts](Alerts) | The alert list, live alerts, and choosing which alerts you get |
 | [Places](Places) | Home, work and other places, with alerts when the car arrives or leaves |
 | [Look and colours](Look-and-colours) | The car's pin, its colours, the odometer, the app's colour and dark mode |

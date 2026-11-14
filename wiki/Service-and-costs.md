@@ -1,16 +1,16 @@
 # Service and costs
 
-If you keep your car's records in [LubeLogger](https://lubelogger.com), CarTracker can show them: reminders, what the car has cost, its fuel and every record. It reads from your own LubeLogger server and changes nothing there.
+If you keep your car's records in [LubeLogger](https://lubelogger.com), CarTracker can show them: reminders, what the car has cost, its fuel and every record. It works on your own LubeLogger server: what you add or change here goes straight into LubeLogger.
 
 ## Connecting
 
-Open **More → Service and costs → LubeLogger** and fill in:
+Open the **Service** tab at the bottom and fill in:
 
 - **LubeLogger address**: where you open LubeLogger in a browser, such as `lubelogger.example.com`. Add `http://` in front if yours doesn't use https.
-- **API key**: make one in LubeLogger's settings. The **Viewer** role is enough.
+- **API key**: make one in LubeLogger's settings. **Viewer** is enough to look, **Editor** to add and change records, **Manager** to delete them.
 - Or, in place of an API key, your LubeLogger **username and password**. Accounts that sign in through single sign-on need an API key.
 
-Tap **Connect**, then pick which LubeLogger vehicle the car is. Each car in CarTracker gets its own. Once connected, the car card has a **Service and costs** button too.
+Tap **Connect**, then pick which LubeLogger vehicle the car is. Each car in CarTracker gets its own.
 
 The address and sign-in are kept on your phone only.
 
@@ -22,6 +22,14 @@ The address and sign-in are kept on your phone only.
 - **Records**: everything, newest first. The chips above the list show one type at a time.
 
 Money is shown with your phone's currency symbol.
+
+## Adding and changing
+
+- **Add a record** at the top: pick the type (service, repairs, upgrades, fuel or tax), the date, and fill in the rest. A fuel record asks how much went in, whether you filled to full and whether you missed a fill-up before it. Tax has no odometer.
+- Tap any **record** in the list to change it, or to **delete** it (tap Delete twice). Picking another type moves the record to that type. Tags, extra fields and attached files a record has in LubeLogger are kept.
+- **Add a reminder** at the bottom of Reminders, or tap one to change it. Give a due date, an odometer reading, or both; with both, whichever comes first counts. Reminders can't be deleted from here; do that in LubeLogger.
+
+Numbers can be typed with a dot or a comma. If LubeLogger refuses a change, its own message is shown; with an API key that usually means the key's role is too low.
 
 ## Reminder notifications
 
