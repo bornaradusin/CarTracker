@@ -36,6 +36,8 @@ data class LubeConfig(
     val vehicles: Map<Long, Int> = emptyMap(),
     /** Tell about reminders as they become due. */
     val notify: Boolean = true,
+    /** Set Traccar's odometer from the dashboard readings CarDash puts in LubeLogger. */
+    val matchOdometer: Boolean = false,
 ) {
     val connected: Boolean get() = server.isNotBlank() && (apiKey.isNotBlank() || user.isNotBlank())
 }
@@ -177,6 +179,14 @@ class LubeLogger(private val context: Context) {
         val odometer = (records.mapNotNull { it.odometer } + readings).maxOrNull()?.takeIf { it > 0 }
         return LubeData(records.sortedByDescending { it.date ?: LocalDate.MIN }, reminders(vehicleId, config), odometer)
     }
+
+    /** The newest dashboard reading CarDash put in LubeLogger, with the moment it was taken. */
+    suspend fun carDashReading(vehicleId: Int, config: LubeConfig = _config.value): Pair<java.time.Instant, Int>? =
+        array(config, "/api/vehicle/odometerrecords", vehicleId).mapNotNull { r ->
+            val at = CARDASH_NOTE.find(r.text("notes"))?.groupValues?.get(1)?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+            val km = r.int("odometer")?.takeIf { it > 0 }
+            if (at != null && km != null) at to km else null
+        }.maxByOrNull { it.first }
 
     suspend fun reminders(vehicleId: Int, config: LubeConfig = _config.value): List<LubeReminder> =
         array(config, "/api/vehicle/reminders", vehicleId).map { r ->
@@ -346,6 +356,7 @@ class LubeLogger(private val context: Context) {
 
     companion object {
         private const val KEY_CONFIG = "config"
+        private val CARDASH_NOTE = Regex("CarDash odometer (\\S+)")
         private const val KEY_TOLD = "told"
         private const val KEY_CHECKED = "checked"
         private const val CHECK_EVERY_MS = 12 * 60 * 60_000L

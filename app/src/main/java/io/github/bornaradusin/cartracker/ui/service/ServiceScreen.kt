@@ -192,6 +192,18 @@ fun ServiceScreen(vm: AppViewModel) {
                         checked = config.notify,
                         onChange = { on -> lube.save(config.copy(notify = on)) },
                     )
+                    val match = LocalContext.current.container.odometerMatch
+                    val scope = rememberCoroutineScope()
+                    ToggleRow(
+                        "Match the kilometres to CarDash",
+                        if (config.matchOdometer) (match.result() ?: "Waiting for a reading from CarDash")
+                        else "Sets the tracker's odometer from the dashboard readings CarDash sends to LubeLogger",
+                        checked = config.matchOdometer,
+                        onChange = { on ->
+                            lube.save(config.copy(matchOdometer = on))
+                            if (on) scope.launch { runCatching { match.check(force = true) } }
+                        },
+                    )
                     ChevronRow("Disconnect", config.server.removePrefix("https://").removePrefix("http://"), divider = false) { lube.disconnect() }
                 }
             }

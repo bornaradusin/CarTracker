@@ -76,6 +76,7 @@ class AppContainer(val app: Application) {
     val battery = BatteryWatch(app, settings, history)
     val lube = io.github.bornaradusin.cartracker.data.LubeLogger(app)
     val serviceItems = io.github.bornaradusin.cartracker.data.ServiceItems(app)
+    val odometerMatch = io.github.bornaradusin.cartracker.data.OdometerMatch(app, lube, api)
 
     @OptIn(FlowPreview::class)
     fun start() {
@@ -96,6 +97,7 @@ class AppContainer(val app: Application) {
             live.positions.debounce(1_000).collect { positions ->
                 if (positions.isNotEmpty()) runCatching { battery.check(live.devices.value, positions.values) }
                 runCatching { lube.checkReminders(live.devices.value.associate { it.id to it.name }) }
+                runCatching { odometerMatch.check() }
             }
         }
         scope.launch {

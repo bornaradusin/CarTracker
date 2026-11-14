@@ -58,6 +58,7 @@ class AlertWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             val devices = c.api.devices().map { it.first }
             c.battery.check(devices, c.api.positions())
             c.lube.checkReminders(devices.associate { it.id to it.name })
+            c.odometerMatch.check()
         }
         runCatching { CarWidget.refresh(applicationContext, fetch = true) }
         return result.fold({ Result.success() }, { Result.retry() })
