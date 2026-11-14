@@ -1,6 +1,10 @@
 package io.github.bornaradusin.cartracker.ui.service
 
 import androidx.compose.foundation.Canvas
+import io.github.bornaradusin.cartracker.data.ServiceUrgency
+import io.github.bornaradusin.cartracker.data.ServiceStatus
+import io.github.bornaradusin.cartracker.data.ServiceItems
+import io.github.bornaradusin.cartracker.data.ServiceItem
 import java.time.ZoneOffset
 import java.time.Instant
 import io.github.bornaradusin.cartracker.ui.theme.Ic
@@ -113,6 +117,12 @@ fun ServiceScreen(vm: AppViewModel) {
     var editingRecord by remember { mutableStateOf<LubeRecord?>(null) }
     var addingReminder by remember { mutableStateOf(false) }
     var editingReminder by remember { mutableStateOf<LubeReminder?>(null) }
+    val serviceItems = LocalContext.current.container.serviceItems
+    val allItems by serviceItems.items.collectAsStateWithLifecycle()
+    var addingItem by remember { mutableStateOf(false) }
+    var editingItem by remember { mutableStateOf<ServiceStatus?>(null) }
+    /** An item being marked done: the record to add starts with its name. */
+    var doneItem by remember { mutableStateOf<String?>(null) }
 
     // Another car or server starts empty; after a change the old list stays up until the new one is in
     LaunchedEffect(config.server, config.apiKey, config.user, vehicleId) { data = null }
@@ -153,6 +163,11 @@ fun ServiceScreen(vm: AppViewModel) {
                     loaded != null -> {
                         error?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.warnText) }
                         BigButton("Add a record", modifier = Modifier.fillMaxWidth(), icon = Ic.plus) { addingRecord = true }
+                        val carKm = ServiceItems.odometer(loaded.odometer, info.position?.totalDistance?.let { it / 1000.0 })
+                        val statuses = remember(allItems, deviceId, loaded, carKm) {
+                            ServiceItems.sorted(serviceItems.forCar(allItems, deviceId).map { ServiceItems.status(it, loaded.records, carKm) })
+                        }
+                        ItemsCard(statuses, carKm, fromLube = carKm != null && carKm == loaded.odometer, onAdd = { addingItem = true }, onEdit = { editingItem = it })
                         Reminders(loaded.reminders, onAdd = { addingReminder = true }, onEdit = { editingReminder = it })
                         Costs(loaded.records)
                         Fuel(loaded.records.filter { it.kind == LubeKind.FUEL })
@@ -183,16 +198,30 @@ fun ServiceScreen(vm: AppViewModel) {
         }
     }
 
-    if (vehicleId != null && (addingRecord || editingRecord != null)) {
+    if (vehicleId != null && (addingRecord || editingRecord != null || doneItem != null)) {
         RecordDialog(
             lube = lube,
             vehicleId = vehicleId,
             existing = editingRecord,
-            lastOdometer = data?.records?.mapNotNull { it.odometer }?.maxOrNull(),
+            done = doneItem,
+            lastOdometer = data?.odometer,
             onSaved = { reload++ },
             onDismiss = {
                 addingRecord = false
                 editingRecord = null
+                doneItem = null
+            },
+        )
+    }
+    if (addingItem || editingItem != null) {
+        ItemDialog(
+            status = editingItem,
+            onSave = { serviceItems.save(deviceId, it) },
+            onRemove = { serviceItems.remove(deviceId, it) },
+            onDone = { doneItem = it },
+            onDismiss = {
+                addingItem = false
+                editingItem = null
             },
         )
     }
@@ -570,16 +599,243 @@ private fun Records(records: List<LubeRecord>, onEdit: (LubeRecord) -> Unit) {
     }
 }
 
+// ---------- service items ----------
+
+/** What to service and how far off each is, each with a health bar. */
+@Composable
+private fun ItemsCard(statuses: List<ServiceStatus>, carKm: Int?, fromLube: Boolean, onAdd: () -> Unit, onEdit: (ServiceStatus) -> Unit) {
+    val c = LocalAppColors.current
+    SectionCard("Service items") {
+        Text(
+            when {
+                carKm == null -> "No odometer reading yet: add a record with one, and items count down from it."
+                fromLube -> "Counting from ${thousands(carKm)} km, the newest reading in LubeLogger."
+                else -> "Counting from ${thousands(carKm)} km, the app's own count since the newest reading in LubeLogger."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = c.muted,
+            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+        )
+        statuses.forEach { st ->
+            val overdue = st.urgency == ServiceUrgency.OVERDUE
+            Column(Modifier.fillMaxWidth().clickable { onEdit(st) }.padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        st.item.name.ifBlank { "Item" },
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = c.ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (st.due) {
+                        Text(
+                            if (overdue) "OVERDUE" else "DUE SOON",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = if (overdue) Color.White else RED,
+                            modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(if (overdue) RED else RED.copy(alpha = 0.14f)).padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                    Box(Modifier.weight(1f))
+                    Text(
+                        leftText(st),
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                        color = if (st.due) RED else if (st.urgency == ServiceUrgency.UNSET) c.muted else c.ink,
+                        maxLines = 1,
+                    )
+                }
+                HealthBar(st)
+                Text(
+                    listOf(intervalText(st.item), nextText(st)).filter { it.isNotBlank() }.joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            HorizontalDivider(color = c.divider, thickness = 1.dp)
+        }
+        ChevronRow("Add an item", divider = false, onClick = onAdd)
+    }
+}
+
+/**
+ * What's left of an item's interval as a game's health bar: a row of squares, all lit just after it's
+ * done, going out one by one down to none when it's due. Green, amber under half, red once it's due
+ * soon; overdue, the empty squares are red too.
+ */
+@Composable
+private fun HealthBar(st: ServiceStatus) {
+    val c = LocalAppColors.current
+    val unset = st.urgency == ServiceUrgency.UNSET
+    val left = if (unset) 0f else (1f - st.used).coerceIn(0f, 1f)
+    val lit = if (unset) 0 else kotlin.math.ceil(left * SQUARES).toInt()
+    val on = when {
+        st.due -> RED
+        left > 0.5f -> c.good
+        else -> Color(0xFFFFB020)
+    }
+    val off = if (st.urgency == ServiceUrgency.OVERDUE) RED.copy(alpha = 0.35f) else c.surface2
+    Row(Modifier.fillMaxWidth().height(12.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        repeat(SQUARES) { i ->
+            Box(Modifier.weight(1f).height(12.dp).clip(RoundedCornerShape(2.dp)).background(if (i < lit) on else off))
+        }
+    }
+}
+
+private const val SQUARES = 20
+private val RED = Color(0xFFD64545)
+
+private fun thousands(value: Int): String = String.format(Locale.US, "%,d", value)
+
+private fun intervalText(item: ServiceItem): String = listOfNotNull(
+    item.everyKm?.let { "every ${thousands(it)} km" },
+    item.everyMonths?.let { if (it % 12 == 0) (if (it == 12) "every year" else "every ${it / 12} years") else "every $it months" },
+).joinToString(" or ").replaceFirstChar { it.uppercase() }
+
+private fun leftText(st: ServiceStatus): String {
+    if (st.urgency == ServiceUrgency.UNSET) return "Not set yet"
+    val kmLeft = st.kmLeft
+    val daysLeft = st.daysLeft
+    return if (st.byKm && kmLeft != null) {
+        if (kmLeft >= 0) "${thousands(kmLeft)} km left" else "${thousands(-kmLeft)} km overdue"
+    } else if (daysLeft != null) {
+        val days = kotlin.math.abs(daysLeft)
+        val span = if (days < 62) (if (days == 1L) "1 day" else "$days days") else "${days / 30} months"
+        if (daysLeft >= 0) "$span left" else "$span overdue"
+    } else {
+        "Not set yet"
+    }
+}
+
+private fun nextText(st: ServiceStatus): String {
+    if (st.urgency == ServiceUrgency.UNSET) return "tap to set when it was last done"
+    val word = if (st.urgency == ServiceUrgency.OVERDUE) "was due" else "next"
+    return listOfNotNull(
+        st.nextKm?.let { "at ${thousands(it)} km" },
+        st.nextDate?.let { "by ${it.format(monthYear)}" },
+    ).joinToString(" or ").let { if (it.isBlank()) "" else "$word $it" }
+}
+
+@Composable
+private fun ItemDialog(status: ServiceStatus?, onSave: (ServiceItem) -> Unit, onRemove: (String) -> Unit, onDone: (String) -> Unit, onDismiss: () -> Unit) {
+    val c = LocalAppColors.current
+    val item = status?.item
+    var name by remember { mutableStateOf(item?.name.orEmpty()) }
+    var everyKm by remember { mutableStateOf(item?.everyKm?.toString().orEmpty()) }
+    var everyMonths by remember { mutableStateOf(item?.everyMonths?.toString().orEmpty()) }
+    var lastKm by remember { mutableStateOf(item?.lastKm?.toString().orEmpty()) }
+    var lastDate by remember { mutableStateOf(item?.lastDay?.let(LocalDate::ofEpochDay)) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val colors = fieldColors()
+
+    /** What's typed, as an item; null (with the reason shown) when it can't be one. */
+    fun typed(): ServiceItem? {
+        val km = LubeLogger.parseNumber(everyKm)?.let { Math.round(it).toInt() }?.takeIf { it > 0 }
+        val months = LubeLogger.parseNumber(everyMonths)?.let { Math.round(it).toInt() }?.takeIf { it > 0 }
+        problem = when {
+            name.isBlank() -> "Give it a name."
+            km == null && months == null -> "Say how often: kilometres, months or both."
+            else -> null
+        }
+        if (problem != null) return null
+        return ServiceItem(
+            id = item?.id ?: ServiceItems.newId(),
+            name = name.trim(),
+            everyKm = km,
+            everyMonths = months,
+            lastKm = LubeLogger.parseNumber(lastKm)?.let { Math.round(it).toInt() }?.takeIf { it > 0 },
+            lastDay = lastDate?.toEpochDay(),
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = c.surface,
+        title = { Text(if (item == null) "Add an item" else item.name.ifBlank { "Item" }, color = c.ink) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true, colors = colors, modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = everyKm,
+                        onValueChange = { everyKm = it },
+                        label = { Text("Every km") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = colors,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = everyMonths,
+                        onValueChange = { everyMonths = it },
+                        label = { Text("Every months") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = colors,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Text(
+                    if (status?.fromRecord == true) {
+                        "Last done ${status.lastDate?.format(dayLabel).orEmpty()}" + (status.lastKm?.let { " at ${thousands(it)} km" } ?: "") +
+                            ", from the LubeLogger record with this name in it. The app uses the newest such record, or what you type below if that's later."
+                    } else {
+                        "When it was last done. A LubeLogger service, repair or upgrade with this item's name in its description counts too, so name the item the way you write it there."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.muted,
+                )
+                OutlinedTextField(
+                    value = lastKm,
+                    onValueChange = { lastKm = it },
+                    label = { Text("Last done at km") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = colors,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                DateRow("Last done on", lastDate, clearable = true) { lastDate = it }
+                problem?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.warnText) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        typed()?.let {
+                            onSave(it)
+                            onDismiss()
+                            onDone(it.name)
+                        }
+                    }) { Text("Done today…", color = c.accentText) }
+                    if (item != null) {
+                        TextButton(onClick = {
+                            onRemove(item.id)
+                            onDismiss()
+                        }) { Text("Remove", color = c.warnText) }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                typed()?.let {
+                    onSave(it)
+                    onDismiss()
+                }
+            }) { Text("Save", color = c.accentText) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = c.ink2) } },
+    )
+}
+
 // ---------- adding and changing ----------
 
 @Composable
-private fun RecordDialog(lube: LubeLogger, vehicleId: Int, existing: LubeRecord?, lastOdometer: Int?, onSaved: () -> Unit, onDismiss: () -> Unit) {
+private fun RecordDialog(lube: LubeLogger, vehicleId: Int, existing: LubeRecord?, done: String?, lastOdometer: Int?, onSaved: () -> Unit, onDismiss: () -> Unit) {
     val c = LocalAppColors.current
     val scope = rememberCoroutineScope()
-    var kind by remember { mutableStateOf(existing?.kind ?: LubeKind.FUEL) }
+    var kind by remember { mutableStateOf(existing?.kind ?: if (done != null) LubeKind.SERVICE else LubeKind.FUEL) }
     var date by remember { mutableStateOf(existing?.date ?: LocalDate.now()) }
     var odometer by remember { mutableStateOf(existing?.odometer?.toString().orEmpty()) }
-    var description by remember { mutableStateOf(existing?.description.orEmpty()) }
+    var description by remember { mutableStateOf(existing?.description ?: done.orEmpty()) }
     var cost by remember { mutableStateOf(existing?.let { field(it.cost) }.orEmpty()) }
     var fuel by remember { mutableStateOf(existing?.takeIf { it.fuel > 0 }?.let { field(it.fuel) }.orEmpty()) }
     var full by remember { mutableStateOf(existing?.fillToFull ?: true) }
@@ -611,7 +867,7 @@ private fun RecordDialog(lube: LubeLogger, vehicleId: Int, existing: LubeRecord?
     AlertDialog(
         onDismissRequest = { if (!working) onDismiss() },
         containerColor = c.surface,
-        title = { Text(if (existing == null) "Add a record" else "Change the record", color = c.ink) },
+        title = { Text(if (done != null) "Done: $done" else if (existing == null) "Add a record" else "Change the record", color = c.ink) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 LubeKind.entries.chunked(3).forEach { row ->

@@ -75,6 +75,7 @@ class AppContainer(val app: Application) {
     val history = HistoryStore(api, java.io.File(app.cacheDir, "history"))
     val battery = BatteryWatch(app, settings, history)
     val lube = io.github.bornaradusin.cartracker.data.LubeLogger(app)
+    val serviceItems = io.github.bornaradusin.cartracker.data.ServiceItems(app)
 
     @OptIn(FlowPreview::class)
     fun start() {

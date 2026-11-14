@@ -99,7 +99,12 @@ data class LubeReminder(
     val raw: JsonObject = JsonObject(emptyMap()),
 )
 
-data class LubeData(val records: List<LubeRecord>, val reminders: List<LubeReminder>)
+data class LubeData(
+    val records: List<LubeRecord>,
+    val reminders: List<LubeReminder>,
+    /** The highest odometer reading LubeLogger has for the vehicle, from any record. */
+    val odometer: Int? = null,
+)
 
 class LubeException(message: String) : Exception(message)
 
@@ -163,7 +168,14 @@ class LubeLogger(private val context: Context) {
                 )
             }
         }
-        return LubeData(records.sortedByDescending { it.date ?: LocalDate.MIN }, reminders(vehicleId, config))
+        // Readings logged by themselves count too; an older LubeLogger without them is fine
+        val readings = try {
+            array(config, "/api/vehicle/odometerrecords", vehicleId).mapNotNull { it.int("odometer") }
+        } catch (e: LubeException) {
+            emptyList()
+        }
+        val odometer = (records.mapNotNull { it.odometer } + readings).maxOrNull()?.takeIf { it > 0 }
+        return LubeData(records.sortedByDescending { it.date ?: LocalDate.MIN }, reminders(vehicleId, config), odometer)
     }
 
     suspend fun reminders(vehicleId: Int, config: LubeConfig = _config.value): List<LubeReminder> =
