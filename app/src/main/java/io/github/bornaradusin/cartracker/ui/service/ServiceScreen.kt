@@ -1,6 +1,18 @@
 package io.github.bornaradusin.cartracker.ui.service
 
 import androidx.compose.foundation.Canvas
+import java.time.ZoneOffset
+import java.time.Instant
+import io.github.bornaradusin.cartracker.ui.theme.Ic
+import io.github.bornaradusin.cartracker.data.LubeReminderEdit
+import io.github.bornaradusin.cartracker.data.LubeRecordEdit
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,7 +22,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -85,7 +96,7 @@ import java.util.Locale
  * read from your own LubeLogger server.
  */
 @Composable
-fun ServiceScreen(vm: AppViewModel, onBack: () -> Unit) {
+fun ServiceScreen(vm: AppViewModel) {
     val c = LocalAppColors.current
     val lube = LocalContext.current.container.lube
     val config by lube.config.collectAsStateWithLifecycle()
@@ -98,9 +109,14 @@ fun ServiceScreen(vm: AppViewModel, onBack: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var reload by remember { mutableIntStateOf(0) }
+    var addingRecord by remember { mutableStateOf(false) }
+    var editingRecord by remember { mutableStateOf<LubeRecord?>(null) }
+    var addingReminder by remember { mutableStateOf(false) }
+    var editingReminder by remember { mutableStateOf<LubeReminder?>(null) }
 
+    // Another car or server starts empty; after a change the old list stays up until the new one is in
+    LaunchedEffect(config.server, config.apiKey, config.user, vehicleId) { data = null }
     LaunchedEffect(config.server, config.apiKey, config.user, vehicleId, reload) {
-        data = null
         error = null
         if (!config.connected || vehicleId == null) return@LaunchedEffect
         loading = true
@@ -122,12 +138,11 @@ fun ServiceScreen(vm: AppViewModel, onBack: () -> Unit) {
             .fillMaxSize()
             .background(c.background)
             .statusBarsPadding()
-            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        ScreenHeader("Service and costs", info?.device?.name, onBack = onBack)
+        ScreenHeader("Service and costs", info?.device?.name)
         when {
             !config.connected -> ConnectCard(lube)
             info == null -> Text("No car selected.", color = c.muted)
@@ -135,7 +150,14 @@ fun ServiceScreen(vm: AppViewModel, onBack: () -> Unit) {
             else -> {
                 val loaded = data
                 when {
-                    loaded != null -> Content(loaded)
+                    loaded != null -> {
+                        error?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.warnText) }
+                        BigButton("Add a record", modifier = Modifier.fillMaxWidth(), icon = Ic.plus) { addingRecord = true }
+                        Reminders(loaded.reminders, onAdd = { addingReminder = true }, onEdit = { editingReminder = it })
+                        Costs(loaded.records)
+                        Fuel(loaded.records.filter { it.kind == LubeKind.FUEL })
+                        Records(loaded.records, onEdit = { editingRecord = it })
+                    }
                     error != null -> SectionCard {
                         Text(error.orEmpty(), style = MaterialTheme.typography.bodyLarge, color = c.ink, modifier = Modifier.padding(top = 12.dp, bottom = 10.dp))
                         BigButton("Try again", modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) { reload++ }
@@ -159,6 +181,32 @@ fun ServiceScreen(vm: AppViewModel, onBack: () -> Unit) {
                 }
             }
         }
+    }
+
+    if (vehicleId != null && (addingRecord || editingRecord != null)) {
+        RecordDialog(
+            lube = lube,
+            vehicleId = vehicleId,
+            existing = editingRecord,
+            lastOdometer = data?.records?.mapNotNull { it.odometer }?.maxOrNull(),
+            onSaved = { reload++ },
+            onDismiss = {
+                addingRecord = false
+                editingRecord = null
+            },
+        )
+    }
+    if (vehicleId != null && (addingReminder || editingReminder != null)) {
+        ReminderDialog(
+            lube = lube,
+            vehicleId = vehicleId,
+            existing = editingReminder,
+            onSaved = { reload++ },
+            onDismiss = {
+                addingReminder = false
+                editingReminder = null
+            },
+        )
     }
 }
 
@@ -185,7 +233,7 @@ private fun ConnectCard(lube: LubeLogger) {
 
     SectionCard("Connect LubeLogger") {
         Text(
-            "See your LubeLogger reminders, costs, fuel and records here. Give the address of your LubeLogger, and either an API key (LubeLogger: Settings, API keys; Viewer is enough) or your username and password.",
+            "See your LubeLogger reminders, costs, fuel and records here, and add to them. Give the address of your LubeLogger, and either an API key or your username and password. To add and change records an API key needs the Editor role; deleting needs Manager.",
             style = MaterialTheme.typography.bodySmall,
             color = c.muted,
             modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
@@ -289,29 +337,20 @@ private fun VehiclePicker(lube: LubeLogger, config: LubeConfig, deviceId: Long, 
 // ---------- what LubeLogger holds ----------
 
 @Composable
-private fun Content(data: LubeData) {
-    Reminders(data.reminders)
-    Costs(data.records)
-    Fuel(data.records.filter { it.kind == LubeKind.FUEL })
-    Records(data.records)
-}
-
-@Composable
-private fun Reminders(reminders: List<LubeReminder>) {
+private fun Reminders(reminders: List<LubeReminder>, onAdd: () -> Unit, onEdit: (LubeReminder) -> Unit) {
     val c = LocalAppColors.current
     SectionCard("Reminders") {
         if (reminders.isEmpty()) {
             Text("No reminders set in LubeLogger.", style = MaterialTheme.typography.bodyMedium, color = c.muted, modifier = Modifier.padding(vertical = 12.dp))
-            return@SectionCard
         }
-        reminders.forEachIndexed { index, r ->
+        reminders.forEach { r ->
             val dot = when (r.urgency) {
                 LubeUrgency.PAST_DUE -> Color(0xFFD64545)
                 LubeUrgency.VERY_URGENT -> c.warn
                 LubeUrgency.URGENT -> Color(0xFFE0B13A)
                 LubeUrgency.NOT_URGENT -> c.good
             }
-            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable { onEdit(r) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(Modifier.size(10.dp).clip(CircleShape).background(dot))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(r.description.ifBlank { "Reminder" }, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = c.ink)
@@ -322,8 +361,9 @@ private fun Reminders(reminders: List<LubeReminder>) {
                     )
                 }
             }
-            if (index < reminders.lastIndex) HorizontalDivider(color = c.divider, thickness = 1.dp)
+            HorizontalDivider(color = c.divider, thickness = 1.dp)
         }
+        ChevronRow("Add a reminder", divider = false, onClick = onAdd)
     }
 }
 
@@ -484,7 +524,7 @@ private fun Fuel(fills: List<LubeRecord>) {
 }
 
 @Composable
-private fun Records(records: List<LubeRecord>) {
+private fun Records(records: List<LubeRecord>, onEdit: (LubeRecord) -> Unit) {
     val c = LocalAppColors.current
     var filter by rememberSaveable { mutableIntStateOf(0) }
     var limit by rememberSaveable { mutableIntStateOf(20) }
@@ -500,7 +540,7 @@ private fun Records(records: List<LubeRecord>) {
             return@SectionCard
         }
         shown.take(limit).forEachIndexed { index, r ->
-            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable { onEdit(r) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(Modifier.size(10.dp).clip(CircleShape).background(kindColor(r.kind)))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
@@ -529,6 +569,286 @@ private fun Records(records: List<LubeRecord>) {
         }
     }
 }
+
+// ---------- adding and changing ----------
+
+@Composable
+private fun RecordDialog(lube: LubeLogger, vehicleId: Int, existing: LubeRecord?, lastOdometer: Int?, onSaved: () -> Unit, onDismiss: () -> Unit) {
+    val c = LocalAppColors.current
+    val scope = rememberCoroutineScope()
+    var kind by remember { mutableStateOf(existing?.kind ?: LubeKind.FUEL) }
+    var date by remember { mutableStateOf(existing?.date ?: LocalDate.now()) }
+    var odometer by remember { mutableStateOf(existing?.odometer?.toString().orEmpty()) }
+    var description by remember { mutableStateOf(existing?.description.orEmpty()) }
+    var cost by remember { mutableStateOf(existing?.let { field(it.cost) }.orEmpty()) }
+    var fuel by remember { mutableStateOf(existing?.takeIf { it.fuel > 0 }?.let { field(it.fuel) }.orEmpty()) }
+    var full by remember { mutableStateOf(existing?.fillToFull ?: true) }
+    var missed by remember { mutableStateOf(existing?.missedFuelUp ?: false) }
+    var notes by remember { mutableStateOf(existing?.notes.orEmpty()) }
+    var working by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var sureToDelete by remember { mutableStateOf(false) }
+    val colors = fieldColors()
+
+    fun submit(action: suspend () -> Unit) {
+        working = true
+        problem = null
+        scope.launch {
+            try {
+                action()
+                onSaved()
+                onDismiss()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                problem = (e as? LubeException)?.message ?: "Couldn't save it."
+            } finally {
+                working = false
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!working) onDismiss() },
+        containerColor = c.surface,
+        title = { Text(if (existing == null) "Add a record" else "Change the record", color = c.ink) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                LubeKind.entries.chunked(3).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        row.forEach { k ->
+                            val picked = kind == k
+                            Surface(
+                                onClick = { kind = k },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (picked) c.accent else c.surface2,
+                                contentColor = if (picked) c.onAccent else c.ink,
+                                modifier = Modifier.weight(1f).height(40.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) { Text(k.label, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
+                            }
+                        }
+                    }
+                }
+                DateRow("Date", date, clearable = false) { it?.let { picked -> date = picked } }
+                if (kind != LubeKind.TAX) {
+                    OutlinedTextField(
+                        value = odometer,
+                        onValueChange = { odometer = it },
+                        label = { Text("Odometer") },
+                        placeholder = { lastOdometer?.let { Text("Last recorded: $it") } },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = colors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (kind == LubeKind.FUEL) {
+                    OutlinedTextField(
+                        value = fuel,
+                        onValueChange = { fuel = it },
+                        label = { Text("Fuel added") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        colors = colors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        label = { Text("What was done") },
+                        singleLine = true,
+                        colors = colors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                OutlinedTextField(
+                    value = cost,
+                    onValueChange = { cost = it },
+                    label = { Text("Cost") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    colors = colors,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (kind == LubeKind.FUEL) {
+                    ToggleRow("Filled to full", null, checked = full, onChange = { full = it })
+                    ToggleRow("Missed a fill-up before this", "LubeLogger then leaves this one out of the economy", checked = missed, onChange = { missed = it }, divider = false)
+                }
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Notes") },
+                    minLines = 2,
+                    colors = colors,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                problem?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.warnText) }
+                if (existing != null) {
+                    TextButton(onClick = { if (sureToDelete) submit { lube.deleteRecord(existing) } else sureToDelete = true }, enabled = !working) {
+                        Text(if (sureToDelete) "Tap again to delete it from LubeLogger" else "Delete", color = c.warnText)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !working,
+                onClick = {
+                    val costValue = if (cost.isBlank()) 0.0 else LubeLogger.parseNumber(cost)
+                    val odometerValue = LubeLogger.parseNumber(odometer)?.let { Math.round(it).toInt() }
+                    val fuelValue = LubeLogger.parseNumber(fuel)
+                    when {
+                        costValue == null -> problem = "The cost isn't a number."
+                        kind != LubeKind.TAX && odometerValue == null -> problem = "Fill in the odometer."
+                        kind == LubeKind.FUEL && (fuelValue == null || fuelValue <= 0) -> problem = "Fill in how much fuel went in."
+                        kind != LubeKind.FUEL && description.isBlank() -> problem = "Say what was done."
+                        else -> submit {
+                            lube.saveRecord(
+                                vehicleId,
+                                LubeRecordEdit(kind, date, odometerValue, description.trim(), costValue, notes.trim(), fuelValue ?: 0.0, full, missed),
+                                existing,
+                            )
+                        }
+                    }
+                },
+            ) { Text(if (working) "Saving…" else "Save", color = c.accentText) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !working) { Text("Cancel", color = c.ink2) } },
+    )
+}
+
+@Composable
+private fun ReminderDialog(lube: LubeLogger, vehicleId: Int, existing: LubeReminder?, onSaved: () -> Unit, onDismiss: () -> Unit) {
+    val c = LocalAppColors.current
+    val scope = rememberCoroutineScope()
+    var description by remember { mutableStateOf(existing?.description.orEmpty()) }
+    var date by remember { mutableStateOf(existing?.dueDate) }
+    var odometer by remember { mutableStateOf(existing?.dueOdometer?.toString().orEmpty()) }
+    var notes by remember { mutableStateOf(existing?.notes.orEmpty()) }
+    var working by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val colors = fieldColors()
+
+    AlertDialog(
+        onDismissRequest = { if (!working) onDismiss() },
+        containerColor = c.surface,
+        title = { Text(if (existing == null) "Add a reminder" else "Change the reminder", color = c.ink) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("What for") },
+                    singleLine = true,
+                    colors = colors,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                DateRow("Due on", date, clearable = true) { date = it }
+                OutlinedTextField(
+                    value = odometer,
+                    onValueChange = { odometer = it },
+                    label = { Text("Or due at this odometer") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = colors,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Notes") },
+                    minLines = 2,
+                    colors = colors,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text("Give a date, an odometer reading, or both: with both, whichever comes first counts.", style = MaterialTheme.typography.bodySmall, color = c.muted)
+                problem?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.warnText) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !working,
+                onClick = {
+                    val odometerValue = LubeLogger.parseNumber(odometer)?.let { Math.round(it).toInt() }?.takeIf { it > 0 }
+                    val due = date
+                    when {
+                        description.isBlank() -> problem = "Say what the reminder is for."
+                        due == null && odometerValue == null -> problem = "Give a date or an odometer reading."
+                        else -> {
+                            working = true
+                            problem = null
+                            scope.launch {
+                                try {
+                                    lube.saveReminder(vehicleId, LubeReminderEdit(description.trim(), due, odometerValue, notes.trim()), existing)
+                                    onSaved()
+                                    onDismiss()
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    problem = (e as? LubeException)?.message ?: "Couldn't save it."
+                                } finally {
+                                    working = false
+                                }
+                            }
+                        }
+                    }
+                },
+            ) { Text(if (working) "Saving…" else "Save", color = c.accentText) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !working) { Text("Cancel", color = c.ink2) } },
+    )
+}
+
+/** A date to tap and pick from a calendar. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DateRow(label: String, date: LocalDate?, clearable: Boolean, onPick: (LocalDate?) -> Unit) {
+    val c = LocalAppColors.current
+    var picking by remember { mutableStateOf(false) }
+    Surface(onClick = { picking = true }, shape = RoundedCornerShape(12.dp), color = c.surface2, contentColor = c.ink, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.heightIn(min = 52.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = c.muted, modifier = Modifier.weight(1f))
+            Text(date?.format(dayLabel) ?: "No date", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium))
+        }
+    }
+    if (picking) {
+        val state = rememberDatePickerState(
+            initialSelectedDateMillis = (date ?: LocalDate.now()).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { picking = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { onPick(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()) }
+                    picking = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    if (clearable) onPick(null)
+                    picking = false
+                }) { Text(if (clearable) "No date" else "Cancel") }
+            },
+        ) { DatePicker(state = state) }
+    }
+}
+
+@Composable
+private fun fieldColors() = LocalAppColors.current.let { c ->
+    OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = c.accentOutline,
+        unfocusedBorderColor = c.line,
+        focusedLabelColor = c.accentText,
+        cursorColor = c.accentOutline,
+        focusedContainerColor = c.surface,
+        unfocusedContainerColor = c.surface,
+    )
+}
+
+/** A number as it goes into a text field: no trailing zeros. */
+private fun field(value: Double): String = java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
 
 // ---------- pieces ----------
 

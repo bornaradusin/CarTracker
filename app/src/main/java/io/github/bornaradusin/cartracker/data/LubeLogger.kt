@@ -16,6 +16,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.Credentials
+import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
@@ -60,7 +61,26 @@ data class LubeRecord(
     /** Fuel only: how much went in, and the economy LubeLogger worked out (0 when it couldn't). */
     val fuel: Double = 0.0,
     val economy: Double = 0.0,
+    val fillToFull: Boolean = true,
+    val missedFuelUp: Boolean = false,
+    /** The record as LubeLogger sent it, so a change can send back everything it holds. */
+    val raw: JsonObject = JsonObject(emptyMap()),
 )
+
+/** What the person typed for a new record, or for a change to one. */
+data class LubeRecordEdit(
+    val kind: LubeKind,
+    val date: LocalDate,
+    val odometer: Int?,
+    val description: String,
+    val cost: Double,
+    val notes: String,
+    val fuel: Double = 0.0,
+    val fillToFull: Boolean = true,
+    val missedFuelUp: Boolean = false,
+)
+
+data class LubeReminderEdit(val description: String, val dueDate: LocalDate?, val dueOdometer: Int?, val notes: String)
 
 enum class LubeUrgency(val label: String) {
     PAST_DUE("Past due"),
@@ -76,6 +96,7 @@ data class LubeReminder(
     val dueDate: LocalDate?,
     val dueOdometer: Int?,
     val notes: String,
+    val raw: JsonObject = JsonObject(emptyMap()),
 )
 
 data class LubeData(val records: List<LubeRecord>, val reminders: List<LubeReminder>)
@@ -136,6 +157,9 @@ class LubeLogger(private val context: Context) {
                     notes = r.text("notes"),
                     fuel = r.number("fuelConsumed") ?: 0.0,
                     economy = r.number("fuelEconomy") ?: 0.0,
+                    fillToFull = r.text("isFillToFull").lowercase() != "false",
+                    missedFuelUp = r.text("missedFuelUp").lowercase() == "true",
+                    raw = r,
                 )
             }
         }
@@ -151,8 +175,63 @@ class LubeLogger(private val context: Context) {
                 dueDate = date(r.text("dueDate")),
                 dueOdometer = r.int("dueOdometer")?.takeIf { it > 0 },
                 notes = r.text("notes"),
+                raw = r,
             )
         }.sortedWith(compareBy<LubeReminder> { it.urgency.ordinal }.thenBy { it.dueDate ?: LocalDate.MAX })
+
+    // ---- writing ----
+
+    /** Adds a record, or with [existing] changes that one. It goes straight to LubeLogger. */
+    suspend fun saveRecord(vehicleId: Int, edit: LubeRecordEdit, existing: LubeRecord?, config: LubeConfig = _config.value) {
+        // A change sends back everything the record holds: LubeLogger replaces the whole record
+        val fields = LinkedHashMap<String, String>()
+        if (existing != null && existing.kind == edit.kind) flatten(existing.raw, fields)
+        fields["date"] = edit.date.toString()
+        fields["cost"] = decimal(edit.cost)
+        fields["notes"] = edit.notes
+        if (edit.kind != LubeKind.TAX) fields["odometer"] = (edit.odometer ?: 0).toString()
+        if (edit.kind == LubeKind.FUEL) {
+            fields["fuelConsumed"] = decimal(edit.fuel)
+            fields["isFillToFull"] = edit.fillToFull.toString()
+            fields["missedFuelUp"] = edit.missedFuelUp.toString()
+        } else {
+            fields["description"] = edit.description
+        }
+        if (existing != null && existing.kind == edit.kind) {
+            fields["id"] = existing.id.toString()
+            write(config, "PUT", "/api/vehicle/${edit.kind.path}/update", null, fields)
+        } else {
+            write(config, "POST", "/api/vehicle/${edit.kind.path}/add", vehicleId, fields)
+            // Saved as another type: the old one goes
+            if (existing != null) deleteRecord(existing, config)
+        }
+    }
+
+    suspend fun deleteRecord(record: LubeRecord, config: LubeConfig = _config.value) {
+        write(config, "DELETE", "/api/vehicle/${record.kind.path}/delete", null, emptyMap(), id = record.id)
+    }
+
+    suspend fun saveReminder(vehicleId: Int, edit: LubeReminderEdit, existing: LubeReminder?, config: LubeConfig = _config.value) {
+        val fields = LinkedHashMap<String, String>()
+        if (existing != null) flatten(existing.raw, fields)
+        fields["description"] = edit.description
+        fields["notes"] = edit.notes
+        fields["metric"] = when {
+            edit.dueDate != null && edit.dueOdometer != null -> "Both"
+            edit.dueOdometer != null -> "Odometer"
+            else -> "Date"
+        }
+        fields["dueDate"] = (edit.dueDate ?: existing?.dueDate ?: LocalDate.now()).toString()
+        fields["dueOdometer"] = (edit.dueOdometer ?: 0).toString()
+        // Worked out by LubeLogger, not something to send back
+        listOf("urgency", "dueDays", "dueDistance").forEach { fields.remove(it) }
+        if (existing != null) {
+            fields["id"] = existing.id.toString()
+            write(config, "PUT", "/api/vehicle/reminders/update", null, fields)
+        } else {
+            write(config, "POST", "/api/vehicle/reminders/add", vehicleId, fields)
+        }
+    }
 
     /**
      * Twice a day at most: a notification for each reminder that has become urgent or past due
@@ -189,23 +268,48 @@ class LubeLogger(private val context: Context) {
 
     // ---- reading ----
 
-    private suspend fun array(config: LubeConfig, path: String, vehicleId: Int?): List<JsonObject> = withContext(Dispatchers.IO) {
+    private suspend fun array(config: LubeConfig, path: String, vehicleId: Int?): List<JsonObject> {
+        val body = call(config, "GET", path, vehicleId, null, null)
+        val parsed = runCatching { json.parseToJsonElement(body) }.getOrNull()
+            ?: throw LubeException("That address answered, but not as LubeLogger. Check it and the sign-in.")
+        return (parsed as? JsonArray)?.mapNotNull { it as? JsonObject }
+            ?: throw LubeException((parsed as? JsonObject)?.text("message")?.ifBlank { null } ?: "LubeLogger sent something unexpected.")
+    }
+
+    private suspend fun write(config: LubeConfig, method: String, path: String, vehicleId: Int?, fields: Map<String, String>, id: Int? = null) {
+        val body = call(config, method, path, vehicleId, fields, id)
+        // LubeLogger answers a change with whether it worked, and why not
+        val answer = runCatching { json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return
+        if (answer.text("success").lowercase() == "false") {
+            throw LubeException(answer.text("message").ifBlank { "LubeLogger didn't save it." })
+        }
+    }
+
+    private suspend fun call(config: LubeConfig, method: String, path: String, vehicleId: Int?, fields: Map<String, String>?, id: Int?): String = withContext(Dispatchers.IO) {
         val base = baseUrl(config.server) ?: throw LubeException("That doesn't look like a server address.")
         val url = base.newBuilder().encodedPath(base.encodedPath.trimEnd('/') + path).apply {
             if (vehicleId != null) addQueryParameter("vehicleId", vehicleId.toString())
+            if (id != null) addQueryParameter("id", id.toString())
             if (config.apiKey.isNotBlank()) addQueryParameter("apiKey", config.apiKey.trim())
         }.build()
+        val form = fields?.let { f -> FormBody.Builder().apply { f.forEach { (key, value) -> add(key, value) } }.build() }
         val request = Request.Builder().url(url).header("Accept", "application/json").header("culture-invariant", "true").apply {
             if (config.apiKey.isNotBlank()) header("x-api-key", config.apiKey.trim())
             else header("Authorization", Credentials.basic(config.user.trim(), config.password))
-        }.get().build()
-        val body = try {
+        }.method(method, if (method == "GET") null else form ?: FormBody.Builder().build()).build()
+        val changing = method != "GET"
+        try {
             client.newCall(request).execute().use { response ->
                 val text = response.body?.string().orEmpty()
                 when {
+                    (response.code == 401 || response.code == 403) && changing ->
+                        throw LubeException("LubeLogger didn't allow that. An API key needs the Editor role to add and change, and Manager to delete.")
                     response.code == 401 || response.code == 403 -> throw LubeException("LubeLogger didn't accept the sign-in.")
                     response.code == 404 -> throw LubeException("No LubeLogger found at that address.")
-                    !response.isSuccessful -> throw LubeException("LubeLogger answered with an error (${response.code}).")
+                    !response.isSuccessful -> throw LubeException(
+                        runCatching { (json.parseToJsonElement(text) as? JsonObject)?.text("message") }.getOrNull()?.ifBlank { null }
+                            ?: "LubeLogger answered with an error (${response.code}).",
+                    )
                     else -> text
                 }
             }
@@ -214,10 +318,6 @@ class LubeLogger(private val context: Context) {
         } catch (e: java.io.IOException) {
             throw LubeException("Couldn't reach LubeLogger.")
         }
-        val parsed = runCatching { json.parseToJsonElement(body) }.getOrNull()
-            ?: throw LubeException("That address answered, but not as LubeLogger. Check it and the sign-in.")
-        (parsed as? JsonArray)?.mapNotNull { it as? JsonObject }
-            ?: throw LubeException((parsed as? JsonObject)?.text("message")?.ifBlank { null } ?: "LubeLogger sent something unexpected.")
     }
 
     private fun baseUrl(server: String): HttpUrl? {
@@ -239,6 +339,39 @@ class LubeLogger(private val context: Context) {
             r.dueDate?.let { "due ${it.format(dayMonth)}" },
             r.dueOdometer?.let { "at ${String.format(java.util.Locale.US, "%,d", it)}" },
         ).joinToString(" · ").ifBlank { null }
+
+        private fun decimal(value: Double): String = java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
+
+        /**
+         * A record as form fields: plain values by name, and lists (attached files, extra fields)
+         * as name[0].field, the way LubeLogger reads a form.
+         */
+        private fun flatten(record: JsonObject, into: MutableMap<String, String>) {
+            record.forEach { (key, value) ->
+                when (value) {
+                    is JsonNull -> Unit
+                    is JsonPrimitive -> {
+                        into[key] = value.content
+                    }
+                    is JsonArray -> value.forEachIndexed { index, item ->
+                        when (item) {
+                            is JsonObject -> item.forEach { (field, inner) ->
+                                if (inner is JsonPrimitive && inner !is JsonNull) {
+                                    into["$key[$index].$field"] = inner.content
+                                }
+                            }
+                            is JsonPrimitive -> {
+                                if (item !is JsonNull) {
+                                    into["$key[$index]"] = item.content
+                                }
+                            }
+                            else -> Unit
+                        }
+                    }
+                    else -> Unit
+                }
+            }
+        }
 
         private fun JsonObject.find(key: String): JsonElement? =
             this[key] ?: entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value

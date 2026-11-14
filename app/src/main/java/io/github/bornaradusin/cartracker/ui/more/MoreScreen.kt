@@ -75,7 +75,7 @@ import io.github.bornaradusin.cartracker.ui.theme.Ic
 import io.github.bornaradusin.cartracker.ui.theme.LocalAppColors
 
 @Composable
-fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit, onOpenService: () -> Unit) {
+fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit) {
     val c = LocalAppColors.current
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -240,10 +240,6 @@ fun MoreScreen(vm: AppViewModel, onOpenAlertTypes: () -> Unit, onOpenService: ()
                 onChange = { vm.setAdvanced(it) },
                 divider = false,
             )
-        }
-
-        SectionCard("Service and costs") {
-            ChevronRow("LubeLogger", "Reminders, costs, fuel and records from your LubeLogger", divider = false, onClick = onOpenService)
         }
 
         SectionCard("Server") {

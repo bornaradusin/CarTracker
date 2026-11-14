@@ -76,7 +76,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.github.bornaradusin.cartracker.container
 import io.github.bornaradusin.cartracker.data.Action
 import io.github.bornaradusin.cartracker.ui.AppViewModel
 import io.github.bornaradusin.cartracker.ui.CarInfo
@@ -98,7 +97,7 @@ import io.github.bornaradusin.cartracker.util.Format
 import java.time.Instant
 
 @Composable
-fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> Unit, onOpenBattery: () -> Unit, onOpenService: () -> Unit) {
+fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> Unit, onOpenBattery: () -> Unit) {
     val c = LocalAppColors.current
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -315,7 +314,6 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
                     onShare = { shareDialog = true },
                     onBattery = onOpenBattery,
                     onControls = onOpenControls,
-                    onService = onOpenService,
                 )
             } else {
                 EmptyCard()
@@ -375,7 +373,6 @@ private fun CarCard(
     onShare: () -> Unit,
     onBattery: () -> Unit,
     onControls: () -> Unit,
-    onService: () -> Unit,
 ) {
     val c = LocalAppColors.current
     Column(
@@ -484,18 +481,6 @@ private fun CarCard(
                 Spacer(Modifier.width(10.dp))
                 Text("All controls", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
                 Icon(Ic.chevronRight, null, tint = c.muted, modifier = Modifier.size(18.dp))
-            }
-        }
-        // Once LubeLogger is connected, it's one tap from the car
-        val lubeConnected by LocalContext.current.container.lube.config.collectAsStateWithLifecycle()
-        if (lubeConnected.connected) {
-            Surface(onClick = onService, shape = RoundedCornerShape(14.dp), color = c.surface2, contentColor = c.ink, modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Ic.chart, null, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Text("Service and costs", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-                    Icon(Ic.chevronRight, null, tint = c.muted, modifier = Modifier.size(18.dp))
-                }
             }
         }
     }

@@ -70,6 +70,7 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 private val tabs = listOf(
     Tab("car", "Car", Ic.car),
     Tab("trips", "Trips", Ic.route),
+    Tab("service", "Service", Ic.chart),
     Tab("alerts", "Alerts", Ic.bell),
     Tab("more", "More", Ic.menu),
 )
@@ -114,7 +115,6 @@ private fun MainShell(vm: AppViewModel, openAlertsSignal: Int) {
                         onOpenControls = { nav.navigate("controls") },
                         onOpenAlerts = { nav.goTab("alerts") },
                         onOpenBattery = { nav.navigate("battery") },
-                        onOpenService = { nav.navigate("service") },
                     )
                 }
                 composable("trips") {
@@ -126,8 +126,8 @@ private fun MainShell(vm: AppViewModel, openAlertsSignal: Int) {
                     )
                 }
                 composable("alerts") { AlertsScreen(vm) }
-                composable("more") { MoreScreen(vm, onOpenAlertTypes = { nav.navigate("alert-types") }, onOpenService = { nav.navigate("service") }) }
-                composable("service") { io.github.bornaradusin.cartracker.ui.service.ServiceScreen(vm, onBack = { nav.back() }) }
+                composable("service") { io.github.bornaradusin.cartracker.ui.service.ServiceScreen(vm) }
+                composable("more") { MoreScreen(vm, onOpenAlertTypes = { nav.navigate("alert-types") }) }
                 composable("controls") { ControlsScreen(vm, onBack = { nav.back() }) }
                 composable("alert-types") { AlertTypesScreen(vm, onBack = { nav.back() }) }
                 composable("battery") { BatteryScreen(vm, onBack = { nav.back() }) }
