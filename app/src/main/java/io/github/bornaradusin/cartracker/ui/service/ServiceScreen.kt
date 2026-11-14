@@ -1,0 +1,578 @@
+package io.github.bornaradusin.cartracker.ui.service
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.bornaradusin.cartracker.container
+import io.github.bornaradusin.cartracker.data.LubeConfig
+import io.github.bornaradusin.cartracker.data.LubeData
+import io.github.bornaradusin.cartracker.data.LubeException
+import io.github.bornaradusin.cartracker.data.LubeKind
+import io.github.bornaradusin.cartracker.data.LubeLogger
+import io.github.bornaradusin.cartracker.data.LubeRecord
+import io.github.bornaradusin.cartracker.data.LubeReminder
+import io.github.bornaradusin.cartracker.data.LubeUrgency
+import io.github.bornaradusin.cartracker.data.LubeVehicle
+import io.github.bornaradusin.cartracker.ui.AppViewModel
+import io.github.bornaradusin.cartracker.ui.components.BigButton
+import io.github.bornaradusin.cartracker.ui.components.ChevronRow
+import io.github.bornaradusin.cartracker.ui.components.ScreenHeader
+import io.github.bornaradusin.cartracker.ui.components.SectionCard
+import io.github.bornaradusin.cartracker.ui.components.StatTile
+import io.github.bornaradusin.cartracker.ui.components.ToggleRow
+import io.github.bornaradusin.cartracker.ui.theme.LocalAppColors
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import java.util.Currency
+import java.util.Locale
+
+/**
+ * LubeLogger inside the app: the car's reminders, what it has cost, its fuel and every record,
+ * read from your own LubeLogger server.
+ */
+@Composable
+fun ServiceScreen(vm: AppViewModel, onBack: () -> Unit) {
+    val c = LocalAppColors.current
+    val lube = LocalContext.current.container.lube
+    val config by lube.config.collectAsStateWithLifecycle()
+    val car by vm.selectedCar.collectAsStateWithLifecycle()
+    val info = car
+    val deviceId = info?.device?.id ?: 0L
+    val vehicleId = config.vehicles[deviceId]
+
+    var data by remember { mutableStateOf<LubeData?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var reload by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(config.server, config.apiKey, config.user, vehicleId, reload) {
+        data = null
+        error = null
+        if (!config.connected || vehicleId == null) return@LaunchedEffect
+        loading = true
+        try {
+            data = lube.load(vehicleId, config)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: LubeException) {
+            error = e.message
+        } catch (e: Exception) {
+            error = "Couldn't read LubeLogger."
+        } finally {
+            loading = false
+        }
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(c.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        ScreenHeader("Service and costs", info?.device?.name, onBack = onBack)
+        when {
+            !config.connected -> ConnectCard(lube)
+            info == null -> Text("No car selected.", color = c.muted)
+            vehicleId == null -> VehiclePicker(lube, config, deviceId, info.device.name)
+            else -> {
+                val loaded = data
+                when {
+                    loaded != null -> Content(loaded)
+                    error != null -> SectionCard {
+                        Text(error.orEmpty(), style = MaterialTheme.typography.bodyLarge, color = c.ink, modifier = Modifier.padding(top = 12.dp, bottom = 10.dp))
+                        BigButton("Try again", modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) { reload++ }
+                    }
+                    loading -> Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = c.accentOutline)
+                    }
+                }
+                SectionCard("LubeLogger") {
+                    ChevronRow("Refresh", "Read everything again") { reload++ }
+                    ChevronRow("Vehicle", "Pick a different LubeLogger vehicle for ${info.device.name}") {
+                        lube.save(config.copy(vehicles = config.vehicles - deviceId))
+                    }
+                    ToggleRow(
+                        "Tell me about reminders",
+                        "A notification when one becomes urgent or past due",
+                        checked = config.notify,
+                        onChange = { on -> lube.save(config.copy(notify = on)) },
+                    )
+                    ChevronRow("Disconnect", config.server.removePrefix("https://").removePrefix("http://"), divider = false) { lube.disconnect() }
+                }
+            }
+        }
+    }
+}
+
+// ---------- connecting ----------
+
+@Composable
+private fun ConnectCard(lube: LubeLogger) {
+    val c = LocalAppColors.current
+    val scope = rememberCoroutineScope()
+    var server by rememberSaveable { mutableStateOf("") }
+    var apiKey by rememberSaveable { mutableStateOf("") }
+    var user by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var working by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = c.accentOutline,
+        unfocusedBorderColor = c.line,
+        focusedLabelColor = c.accentText,
+        cursorColor = c.accentOutline,
+        focusedContainerColor = c.surface,
+        unfocusedContainerColor = c.surface,
+    )
+
+    SectionCard("Connect LubeLogger") {
+        Text(
+            "See your LubeLogger reminders, costs, fuel and records here. Give the address of your LubeLogger, and either an API key (LubeLogger: Settings, API keys; Viewer is enough) or your username and password.",
+            style = MaterialTheme.typography.bodySmall,
+            color = c.muted,
+            modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 12.dp)) {
+            OutlinedTextField(
+                value = server,
+                onValueChange = { server = it },
+                label = { Text("LubeLogger address") },
+                placeholder = { Text("lubelogger.example.com") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                colors = fieldColors,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = { apiKey = it },
+                label = { Text("API key") },
+                singleLine = true,
+                colors = fieldColors,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text("Or, without an API key:", style = MaterialTheme.typography.bodySmall, color = c.muted)
+            OutlinedTextField(
+                value = user,
+                onValueChange = { user = it },
+                label = { Text("Username") },
+                singleLine = true,
+                colors = fieldColors,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Password") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                colors = fieldColors,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            problem?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.warnText) }
+            BigButton(
+                if (working) "Connecting…" else "Connect",
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !working && server.isNotBlank() && (apiKey.isNotBlank() || user.isNotBlank()),
+            ) {
+                val attempt = LubeConfig(server = server.trim(), apiKey = apiKey.trim(), user = user.trim(), password = password)
+                working = true
+                problem = null
+                scope.launch {
+                    try {
+                        lube.vehicles(attempt)
+                        lube.save(attempt)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: LubeException) {
+                        problem = e.message
+                    } catch (e: Exception) {
+                        problem = "Couldn't connect."
+                    } finally {
+                        working = false
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VehiclePicker(lube: LubeLogger, config: LubeConfig, deviceId: Long, carName: String) {
+    val c = LocalAppColors.current
+    var vehicles by remember { mutableStateOf<List<LubeVehicle>?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(config.server, config.apiKey, config.user) {
+        try {
+            vehicles = lube.vehicles(config)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            problem = (e as? LubeException)?.message ?: "Couldn't read LubeLogger."
+        }
+    }
+    SectionCard("Which vehicle is $carName?") {
+        val list = vehicles
+        when {
+            problem != null -> Text(problem.orEmpty(), color = c.warnText, modifier = Modifier.padding(vertical = 12.dp))
+            list == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = c.accentOutline) }
+            list.isEmpty() -> Text("This LubeLogger account has no vehicles.", color = c.muted, modifier = Modifier.padding(vertical = 12.dp))
+            else -> list.forEachIndexed { index, vehicle ->
+                ChevronRow(vehicle.name, divider = index < list.lastIndex) {
+                    lube.save(config.copy(vehicles = config.vehicles + (deviceId to vehicle.id)))
+                }
+            }
+        }
+        ChevronRow("Disconnect", config.server.removePrefix("https://").removePrefix("http://"), divider = false) { lube.disconnect() }
+    }
+}
+
+// ---------- what LubeLogger holds ----------
+
+@Composable
+private fun Content(data: LubeData) {
+    Reminders(data.reminders)
+    Costs(data.records)
+    Fuel(data.records.filter { it.kind == LubeKind.FUEL })
+    Records(data.records)
+}
+
+@Composable
+private fun Reminders(reminders: List<LubeReminder>) {
+    val c = LocalAppColors.current
+    SectionCard("Reminders") {
+        if (reminders.isEmpty()) {
+            Text("No reminders set in LubeLogger.", style = MaterialTheme.typography.bodyMedium, color = c.muted, modifier = Modifier.padding(vertical = 12.dp))
+            return@SectionCard
+        }
+        reminders.forEachIndexed { index, r ->
+            val dot = when (r.urgency) {
+                LubeUrgency.PAST_DUE -> Color(0xFFD64545)
+                LubeUrgency.VERY_URGENT -> c.warn
+                LubeUrgency.URGENT -> Color(0xFFE0B13A)
+                LubeUrgency.NOT_URGENT -> c.good
+            }
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.size(10.dp).clip(CircleShape).background(dot))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(r.description.ifBlank { "Reminder" }, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = c.ink)
+                    Text(
+                        listOfNotNull(r.urgency.label, LubeLogger.dueText(r), dueIn(r.dueDate)).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.muted,
+                    )
+                }
+            }
+            if (index < reminders.lastIndex) HorizontalDivider(color = c.divider, thickness = 1.dp)
+        }
+    }
+}
+
+private fun dueIn(date: LocalDate?): String? {
+    val days = date?.let { java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), it) } ?: return null
+    return when {
+        days < -1 -> "${-days} days ago"
+        days == -1L -> "yesterday"
+        days == 0L -> "today"
+        days == 1L -> "tomorrow"
+        else -> "in $days days"
+    }
+}
+
+@Composable
+private fun Costs(records: List<LubeRecord>) {
+    val c = LocalAppColors.current
+    var period by rememberSaveable { mutableIntStateOf(0) }
+    val today = LocalDate.now()
+    val from = when (period) {
+        0 -> today.minusMonths(12).plusDays(1)
+        1 -> today.withDayOfYear(1)
+        else -> null
+    }
+    val shown = remember(records, period) { records.filter { from == null || (it.date != null && !it.date.isBefore(from)) } }
+    val total = shown.sumOf { it.cost }
+
+    SectionCard("Costs") {
+        Chips(listOf("12 months", "This year", "All time"), period) { period = it }
+        Text(money(total), style = MaterialTheme.typography.headlineMedium.copy(fontSize = 32.sp), color = c.ink, modifier = Modifier.padding(top = 12.dp))
+        Text(
+            if (shown.isEmpty()) "Nothing recorded in this time" else "${shown.size} records",
+            style = MaterialTheme.typography.bodySmall,
+            color = c.muted,
+        )
+
+        // ---- by type
+        val byKind = LubeKind.entries.map { kind -> kind to shown.filter { it.kind == kind }.sumOf { it.cost } }.filter { it.second > 0 }
+        val most = byKind.maxOfOrNull { it.second } ?: 0.0
+        Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            byKind.forEach { (kind, sum) ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(kind.label, style = MaterialTheme.typography.bodyMedium, color = c.ink2, modifier = Modifier.weight(0.9f))
+                    Box(Modifier.weight(2f).height(10.dp).clip(RoundedCornerShape(5.dp)).background(c.surface2)) {
+                        Box(Modifier.fillMaxWidth((sum / most).toFloat().coerceIn(0.02f, 1f)).height(10.dp).clip(RoundedCornerShape(5.dp)).background(kindColor(kind)))
+                    }
+                    Text(money(sum), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = c.ink, modifier = Modifier.weight(1.1f), maxLines = 1)
+                }
+            }
+        }
+
+        // ---- month by month
+        val months = remember(records, period) {
+            val last = YearMonth.from(today)
+            val first = when (period) {
+                0 -> last.minusMonths(11)
+                1 -> YearMonth.of(today.year, 1)
+                else -> records.mapNotNull { it.date }.minOrNull()?.let { YearMonth.from(it) }?.coerceAtLeast(last.minusMonths(35)) ?: last
+            }
+            generateSequence(first) { it.plusMonths(1) }.takeWhile { !it.isAfter(last) }.toList()
+        }
+        val perMonth = remember(records, months) {
+            months.map { month -> LubeKind.entries.map { kind -> records.filter { it.kind == kind && it.date != null && YearMonth.from(it.date) == month }.sumOf { r -> r.cost } } }
+        }
+        if (perMonth.any { it.sum() > 0 }) {
+            Text("Month by month", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), color = c.muted, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp))
+            val top = perMonth.maxOf { it.sum() }
+            val gridColor = c.line
+            Canvas(Modifier.fillMaxWidth().height(140.dp)) {
+                val slot = size.width / perMonth.size
+                val bar = (slot * 0.62f).coerceAtMost(28.dp.toPx())
+                drawLine(gridColor, Offset(0f, size.height - 1f), Offset(size.width, size.height - 1f), 1.dp.toPx())
+                perMonth.forEachIndexed { index, sums ->
+                    var y = size.height - 1f
+                    sums.forEachIndexed { k, sum ->
+                        if (sum > 0) {
+                            val h = (sum / top).toFloat() * (size.height - 8.dp.toPx())
+                            drawRoundRect(
+                                kindColor(LubeKind.entries[k]),
+                                topLeft = Offset(index * slot + (slot - bar) / 2f, y - h),
+                                size = Size(bar, h),
+                                cornerRadius = CornerRadius(2.dp.toPx()),
+                            )
+                            y -= h
+                        }
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                val step = if (months.size > 18) 6 else if (months.size > 8) 3 else 1
+                months.forEachIndexed { index, month ->
+                    Text(
+                        if (index % step == 0) month.format(monthLabel) else "",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = c.muted,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Visible,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            Text("Tallest month: ${money(top)}", style = MaterialTheme.typography.bodySmall, color = c.muted, modifier = Modifier.padding(top = 6.dp, bottom = 10.dp))
+        } else {
+            Box(Modifier.height(10.dp))
+        }
+    }
+}
+
+@Composable
+private fun Fuel(fills: List<LubeRecord>) {
+    if (fills.isEmpty()) return
+    val c = LocalAppColors.current
+    val year = remember(fills) { fills.filter { it.date != null && !it.date.isBefore(LocalDate.now().minusMonths(12)) } }
+    val amount = year.sumOf { it.fuel }
+    val cost = year.sumOf { it.cost }
+    val economy = year.map { it.economy }.filter { it > 0 }
+    SectionCard("Fuel, last 12 months") {
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatTile("Fill-ups", year.size.toString(), Modifier.weight(1f))
+            StatTile("Fuel", plain(amount), Modifier.weight(1f))
+            StatTile("Per unit", if (amount > 0) money(cost / amount, 3) else "–", Modifier.weight(1f))
+            StatTile("Economy", if (economy.isNotEmpty()) plain(economy.average()) else "–", Modifier.weight(1f))
+        }
+        // Oldest first, as far back as there is, the last 30 fills at most
+        val line = remember(fills) { fills.filter { it.economy > 0 && it.date != null }.sortedBy { it.date }.takeLast(30) }
+        if (line.size >= 2) {
+            Text("Fuel economy, fill by fill", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), color = c.muted, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp))
+            val low = line.minOf { it.economy }
+            val high = line.maxOf { it.economy }
+            val lineColor = c.accentOutline
+            val gridColor = c.line
+            Canvas(Modifier.fillMaxWidth().height(120.dp)) {
+                val pad = 6.dp.toPx()
+                val range = (high - low).takeIf { it > 0 } ?: 1.0
+                val path = Path()
+                line.forEachIndexed { index, r ->
+                    val x = pad + (size.width - 2 * pad) * index / (line.size - 1)
+                    val y = pad + (size.height - 2 * pad) * (1f - ((r.economy - low) / range).toFloat())
+                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                drawLine(gridColor, Offset(0f, size.height - 1f), Offset(size.width, size.height - 1f), 1.dp.toPx())
+                drawPath(path, lineColor, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(line.first().date?.format(monthYear).orEmpty(), style = MaterialTheme.typography.labelSmall, color = c.muted)
+                Text("${plain(low)} to ${plain(high)}", style = MaterialTheme.typography.labelSmall, color = c.muted)
+                Text(line.last().date?.format(monthYear).orEmpty(), style = MaterialTheme.typography.labelSmall, color = c.muted)
+            }
+        }
+        Text(
+            "Amounts and economy are in the units you use in LubeLogger.",
+            style = MaterialTheme.typography.bodySmall,
+            color = c.muted,
+            modifier = Modifier.padding(top = 8.dp, bottom = 10.dp),
+        )
+    }
+}
+
+@Composable
+private fun Records(records: List<LubeRecord>) {
+    val c = LocalAppColors.current
+    var filter by rememberSaveable { mutableIntStateOf(0) }
+    var limit by rememberSaveable { mutableIntStateOf(20) }
+    val kinds = LubeKind.entries
+    val shown = remember(records, filter) { if (filter == 0) records else records.filter { it.kind == kinds[filter - 1] } }
+    SectionCard("Records") {
+        Chips(listOf("All") + kinds.map { it.label }, filter) {
+            filter = it
+            limit = 20
+        }
+        if (shown.isEmpty()) {
+            Text("Nothing here yet.", style = MaterialTheme.typography.bodyMedium, color = c.muted, modifier = Modifier.padding(vertical = 12.dp))
+            return@SectionCard
+        }
+        shown.take(limit).forEachIndexed { index, r ->
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.size(10.dp).clip(CircleShape).background(kindColor(r.kind)))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        r.description.ifBlank { if (r.kind == LubeKind.FUEL) "Fuel" + (if (r.fuel > 0) ", ${plain(r.fuel)}" else "") else r.kind.label },
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                        color = c.ink,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        listOfNotNull(
+                            r.date?.format(dayLabel),
+                            r.kind.label.takeIf { filter == 0 },
+                            r.odometer?.let { String.format(Locale.US, "%,d", it) },
+                        ).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.muted,
+                    )
+                }
+                Text(money(r.cost), style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold), color = c.ink)
+            }
+            if (index < minOf(limit, shown.size) - 1) HorizontalDivider(color = c.divider, thickness = 1.dp)
+        }
+        if (shown.size > limit) {
+            ChevronRow("Show more", "${shown.size - limit} older", divider = false) { limit += 30 }
+        }
+    }
+}
+
+// ---------- pieces ----------
+
+@Composable
+private fun Chips(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    val c = LocalAppColors.current
+    Row(
+        Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(14.dp)).background(c.surface2).padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        labels.forEachIndexed { index, label ->
+            val picked = selected == index
+            Surface(
+                onClick = { onSelect(index) },
+                shape = RoundedCornerShape(11.dp),
+                color = if (picked) c.surface else Color.Transparent,
+                contentColor = if (picked) c.ink else c.muted,
+                shadowElevation = if (picked) 1.dp else 0.dp,
+                modifier = Modifier.weight(1f).height(40.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+                }
+            }
+        }
+    }
+}
+
+private fun kindColor(kind: LubeKind): Color = when (kind) {
+    LubeKind.SERVICE -> Color(0xFF3B82F6)
+    LubeKind.REPAIR -> Color(0xFFE5484D)
+    LubeKind.UPGRADE -> Color(0xFF8B5CF6)
+    LubeKind.FUEL -> Color(0xFFF59E0B)
+    LubeKind.TAX -> Color(0xFF10B981)
+}
+
+private val monthLabel = DateTimeFormatter.ofPattern("MMM", Locale.getDefault())
+private val monthYear = DateTimeFormatter.ofPattern("MMM yyyy", Locale.getDefault())
+private val dayLabel = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault())
+
+private val currencySymbol: String = runCatching { Currency.getInstance(Locale.getDefault()).symbol }.getOrDefault("")
+
+private fun money(value: Double, decimals: Int = 2): String =
+    (currencySymbol + String.format(Locale.US, "%,.${decimals}f", value)).trim()
+
+private fun plain(value: Double): String =
+    if (value >= 100) String.format(Locale.US, "%,.0f", value) else String.format(Locale.US, "%.1f", value)

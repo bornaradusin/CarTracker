@@ -79,6 +79,10 @@ object Notifier {
     fun batteryWeaker(context: Context, deviceId: Long, title: String, text: String) =
         post(context, -3_000 - (deviceId % 100_000).toInt(), title, text, warning = true)
 
+    /** A LubeLogger reminder has become due: one per reminder. */
+    fun reminder(context: Context, id: Int, title: String, text: String) =
+        post(context, -10_000 - (id % 100_000), title, text, warning = false)
+
     /** Paid parking is about to run out. */
     fun parking(context: Context, title: String, text: String) =
         post(context, -4_000, title, text, warning = true)

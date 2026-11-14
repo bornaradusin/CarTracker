@@ -114,6 +114,7 @@ private fun MainShell(vm: AppViewModel, openAlertsSignal: Int) {
                         onOpenControls = { nav.navigate("controls") },
                         onOpenAlerts = { nav.goTab("alerts") },
                         onOpenBattery = { nav.navigate("battery") },
+                        onOpenService = { nav.navigate("service") },
                     )
                 }
                 composable("trips") {
@@ -125,7 +126,8 @@ private fun MainShell(vm: AppViewModel, openAlertsSignal: Int) {
                     )
                 }
                 composable("alerts") { AlertsScreen(vm) }
-                composable("more") { MoreScreen(vm, onOpenAlertTypes = { nav.navigate("alert-types") }) }
+                composable("more") { MoreScreen(vm, onOpenAlertTypes = { nav.navigate("alert-types") }, onOpenService = { nav.navigate("service") }) }
+                composable("service") { io.github.bornaradusin.cartracker.ui.service.ServiceScreen(vm, onBack = { nav.back() }) }
                 composable("controls") { ControlsScreen(vm, onBack = { nav.back() }) }
                 composable("alert-types") { AlertTypesScreen(vm, onBack = { nav.back() }) }
                 composable("battery") { BatteryScreen(vm, onBack = { nav.back() }) }

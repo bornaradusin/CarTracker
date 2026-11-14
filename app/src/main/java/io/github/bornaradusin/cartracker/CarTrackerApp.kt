@@ -74,6 +74,7 @@ class AppContainer(val app: Application) {
     val commands = CommandCenter(api, settings, live, commandLog, scope)
     val history = HistoryStore(api, java.io.File(app.cacheDir, "history"))
     val battery = BatteryWatch(app, settings, history)
+    val lube = io.github.bornaradusin.cartracker.data.LubeLogger(app)
 
     @OptIn(FlowPreview::class)
     fun start() {
@@ -93,6 +94,7 @@ class AppContainer(val app: Application) {
         scope.launch {
             live.positions.debounce(1_000).collect { positions ->
                 if (positions.isNotEmpty()) runCatching { battery.check(live.devices.value, positions.values) }
+                runCatching { lube.checkReminders(live.devices.value.associate { it.id to it.name }) }
             }
         }
         scope.launch {
