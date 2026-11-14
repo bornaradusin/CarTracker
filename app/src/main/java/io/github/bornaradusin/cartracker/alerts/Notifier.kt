@@ -75,6 +75,14 @@ object Notifier {
     fun batteryLow(context: Context, deviceId: Long, title: String, text: String) =
         post(context, -1_000 - (deviceId % 100_000).toInt(), title, text, warning = true)
 
+    /** The battery has been resting lower day after day: one per car, replacing the last. */
+    fun batteryWeaker(context: Context, deviceId: Long, title: String, text: String) =
+        post(context, -3_000 - (deviceId % 100_000).toInt(), title, text, warning = true)
+
+    /** Paid parking is about to run out. */
+    fun parking(context: Context, title: String, text: String) =
+        post(context, -4_000, title, text, warning = true)
+
     private fun post(context: Context, notificationId: Int, title: String, text: String, warning: Boolean) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
             android.os.Build.VERSION.SDK_INT >= 33

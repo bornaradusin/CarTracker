@@ -72,8 +72,8 @@ class AppContainer(val app: Application) {
     val alerts = AlertCenter(app, api, settings, live, addresses)
     val commandLog = CommandLog(java.io.File(app.filesDir, "commands.json"), scope)
     val commands = CommandCenter(api, settings, live, commandLog, scope)
-    val battery = BatteryWatch(app, settings)
     val history = HistoryStore(api, java.io.File(app.cacheDir, "history"))
+    val battery = BatteryWatch(app, settings, history)
 
     @OptIn(FlowPreview::class)
     fun start() {

@@ -41,6 +41,11 @@ data class DevicePrefs(
     val lowVoltage: Double = 11.8,
     /** A low-battery warning was sent and the battery hasn't recovered since. */
     val batteryWarned: Boolean = false,
+    /** Warn when the parked battery has been resting lower day after day. */
+    val batteryTrend: Boolean = true,
+    /** The day (counted from 1970) that was last checked, and the day it last warned. */
+    val trendCheckedDay: Long = 0,
+    val trendWarnedDay: Long = 0,
     /** The fuel state the tracker last confirmed (true = cut), and when. */
     val fuelCut: Boolean? = null,
     val fuelAt: Long = 0,

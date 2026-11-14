@@ -188,6 +188,13 @@ fun BatteryScreen(vm: AppViewModel, onBack: () -> Unit) {
                 color = c.muted,
                 modifier = Modifier.padding(top = 6.dp, bottom = 10.dp),
             )
+            ToggleRow(
+                "Warn me when it's getting weaker",
+                "Once a day the app compares the last week: if the battery rests lower day after day, you hear about it before it's too low to start.",
+                checked = info.prefs.batteryTrend,
+                onChange = { on -> vm.setBatteryTrend(info, on) },
+                divider = false,
+            )
         }
 
         // ---- correction

@@ -120,6 +120,7 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
     var carMenu by remember { mutableStateOf(false) }
     var fuelDialog by remember { mutableStateOf(false) }
     var shareDialog by remember { mutableStateOf(false) }
+    var findDialog by remember { mutableStateOf(false) }
     val checkIdentity = rememberIdentityCheck(settings.fuelFingerprint)
     val selectedId = car?.device?.id
     val fix = car?.position?.takeIf { it.hasFix }
@@ -309,11 +310,7 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
                     fuelPending = pendingChanges[info.device.id]?.key == PendingChange.FUEL,
                     onImmobiliser = { fuelDialog = true },
                     onAlarm = { vm.send(info, if (info.armed) Action.DISARM else Action.ARM) },
-                    onDirections = {
-                        info.position?.takeIf { it.hasFix }?.let {
-                            openUrl(context, "https://www.google.com/maps/dir/?api=1&destination=${it.latitude},${it.longitude}&travelmode=driving")
-                        }
-                    },
+                    onDirections = { findDialog = true },
                     onShare = { shareDialog = true },
                     onBattery = onOpenBattery,
                     onControls = onOpenControls,
@@ -335,6 +332,9 @@ fun CarScreen(vm: AppViewModel, onOpenControls: () -> Unit, onOpenAlerts: () -> 
                 checkIdentity("${action.label} · ${info.device.name}") { vm.send(info, action) }
             },
         )
+    }
+    if (findDialog && info != null) {
+        FindCarDialog(info = info, onOpenUrl = { openUrl(context, it) }, onDismiss = { findDialog = false })
     }
     if (shareDialog && info != null) {
         ShareDialog(
@@ -471,7 +471,7 @@ private fun CarCard(
                 working = alarmPending || (busy != null && busy.startsWith("Alarm")),
                 onClick = onAlarm,
             )
-            QuickAction(Ic.navigation, "Directions", c.accentTint, c.accentText, c.ink, false, false, onDirections)
+            QuickAction(Ic.navigation, "Find car", c.accentTint, c.accentText, c.ink, false, false, onDirections)
             QuickAction(Ic.share, "Share", c.accentTint, c.accentText, c.ink, false, false, onShare)
         }
 

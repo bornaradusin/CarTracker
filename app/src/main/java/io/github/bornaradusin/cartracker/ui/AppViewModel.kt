@@ -963,6 +963,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Whether to warn when the car's parked battery has been getting weaker over several days. */
+    fun setBatteryTrend(car: CarInfo, on: Boolean) = viewModelScope.launch {
+        c.settings.updateDevice(car.device.id) { it.copy(batteryTrend = on, trendCheckedDay = 0) }
+    }
+
     /** The app's low-battery warning level for the car, in volts; 0 turns it off. */
     fun setLowVoltage(car: CarInfo, volts: Double) = viewModelScope.launch {
         c.settings.updateDevice(car.device.id) { it.copy(lowVoltage = volts, batteryWarned = false) }
