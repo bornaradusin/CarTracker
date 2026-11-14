@@ -46,6 +46,11 @@ data class DevicePrefs(
     /** The day (counted from 1970) that was last checked, and the day it last warned. */
     val trendCheckedDay: Long = 0,
     val trendWarnedDay: Long = 0,
+    /**
+     * A dashcam's parking mode draws the battery down to this many volts and then switches itself
+     * off, so resting there is expected; 0 = no dashcam.
+     */
+    val dashcamCutoff: Double = 0.0,
     /** The fuel state the tracker last confirmed (true = cut), and when. */
     val fuelCut: Boolean? = null,
     val fuelAt: Long = 0,

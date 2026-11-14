@@ -195,6 +195,31 @@ fun BatteryScreen(vm: AppViewModel, onBack: () -> Unit) {
                 onChange = { on -> vm.setBatteryTrend(info, on) },
                 divider = false,
             )
+            if (info.prefs.batteryTrend) {
+                val cutoff = info.prefs.dashcamCutoff
+                Text("Dashcam switches off at", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = c.ink, modifier = Modifier.padding(top = 10.dp))
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(0.0 to "None", 12.6 to "12.6", 12.4 to "12.4", 12.2 to "12.2", 12.0 to "12.0").forEach { (volts, label) ->
+                        val picked = cutoff == volts
+                        Surface(
+                            onClick = { vm.setDashcamCutoff(info, volts) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (picked) c.accent else c.surface2,
+                            contentColor = if (picked) c.onAccent else c.ink,
+                            modifier = Modifier.weight(1f).height(40.dp).semantics { contentDescription = if (volts > 0) "$label volts" else "No dashcam" },
+                        ) {
+                            Box(contentAlignment = Alignment.Center) { Text(label, style = MaterialTheme.typography.labelLarge) }
+                        }
+                    }
+                }
+                Text(
+                    "A dashcam that records while parked draws the battery down to its cut-off and then switches off. " +
+                        "Pick the same level here and that much of a fall isn't treated as a weakening battery.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.muted,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 10.dp),
+                )
+            }
         }
 
         // ---- correction

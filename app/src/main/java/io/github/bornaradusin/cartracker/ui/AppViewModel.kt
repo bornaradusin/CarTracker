@@ -968,6 +968,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         c.settings.updateDevice(car.device.id) { it.copy(batteryTrend = on, trendCheckedDay = 0) }
     }
 
+    /** The voltage the car's dashcam stops recording at while parked; 0 = no dashcam. */
+    fun setDashcamCutoff(car: CarInfo, volts: Double) = viewModelScope.launch {
+        c.settings.updateDevice(car.device.id) { it.copy(dashcamCutoff = volts, trendCheckedDay = 0) }
+    }
+
     /** The app's low-battery warning level for the car, in volts; 0 turns it off. */
     fun setLowVoltage(car: CarInfo, volts: Double) = viewModelScope.launch {
         c.settings.updateDevice(car.device.id) { it.copy(lowVoltage = volts, batteryWarned = false) }

@@ -23,6 +23,8 @@ import java.util.Locale
  *
  * Getting weaker: once a day, the level the battery rests at on each of the last days is compared.
  * A steady fall sends one alert, well before the battery is low enough for the first warning.
+ * With a dashcam that records while parked, the battery is drawn down to the dashcam's cut-off
+ * every time: only a fall to clearly below that cut-off counts.
  */
 class BatteryWatch(private val context: Context, private val settings: SettingsStore, private val history: HistoryStore) {
 
@@ -77,7 +79,7 @@ class BatteryWatch(private val context: Context, private val settings: SettingsS
             .mapValues { (_, volts) -> prefs.volts(volts) ?: volts }
         settings.updateDevice(deviceId) { it.copy(trendCheckedDay = today.toEpochDay()) }
 
-        val fall = steadyFall(resting) ?: return
+        val fall = steadyFall(resting, prefs.dashcamCutoff) ?: return
         if (today.toEpochDay() - prefs.trendWarnedDay < QUIET_DAYS) return
         settings.updateDevice(deviceId) { it.copy(trendWarnedDay = today.toEpochDay()) }
         val name = devices.firstOrNull { it.id == deviceId }?.name
@@ -112,6 +114,9 @@ class BatteryWatch(private val context: Context, private val settings: SettingsS
         const val FALL_VOLTS = 0.25
         const val WEAK = 12.4
 
+        /** How far under a dashcam's cut-off the battery must rest before the fall isn't the dashcam's doing. */
+        const val UNDER_CUTOFF = 0.15
+
         /** The level the battery sat at on each day: the middle one of its settled, parked readings. */
         fun restingByDay(points: List<VoltPoint>, zone: ZoneId): Map<LocalDate, Double> {
             val byDay = HashMap<LocalDate, MutableList<Float>>()
@@ -128,7 +133,7 @@ class BatteryWatch(private val context: Context, private val settings: SettingsS
         }
 
         /** A fall across the days that is steady (a line through them slopes down), not one odd day. */
-        fun steadyFall(resting: Map<LocalDate, Double>): Fall? {
+        fun steadyFall(resting: Map<LocalDate, Double>, dashcamCutoff: Double): Fall? {
             if (resting.size < MIN_DAYS) return null
             val days = resting.keys.sorted()
             val x = days.map { (it.toEpochDay() - days.first().toEpochDay()).toDouble() }
@@ -141,7 +146,8 @@ class BatteryWatch(private val context: Context, private val settings: SettingsS
             val span = x.last()
             val first = y.first()
             val last = y.last()
-            val steady = -slope * span >= FALL_VOLTS && first - last >= FALL_VOLTS && last <= WEAK
+            val weak = if (dashcamCutoff > 0.0) minOf(WEAK, dashcamCutoff - UNDER_CUTOFF) else WEAK
+            val steady = -slope * span >= FALL_VOLTS && first - last >= FALL_VOLTS && last <= weak
             return if (steady) Fall(first, last, span.toLong()) else null
         }
     }
