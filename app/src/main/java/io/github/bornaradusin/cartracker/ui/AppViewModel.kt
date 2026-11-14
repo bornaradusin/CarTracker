@@ -652,12 +652,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // ---------- live links and the odometer ----------
 
     /**
-     * A link anyone can open to follow [car] live in a browser for [hours]. Null (with a message)
+     * A link anyone can open to follow [car] live in a browser for [minutes]. Null (with a message)
      * when the server says no. Traccar allows one link per car at a time: an older one still
      * running is replaced when this account may remove it (admins).
      */
-    suspend fun liveLink(car: CarInfo, hours: Long): LiveLink? {
-        val until = Instant.now().plus(hours, ChronoUnit.HOURS)
+    suspend fun liveLink(car: CarInfo, minutes: Long): LiveLink? {
+        val until = Instant.now().plus(minutes, ChronoUnit.MINUTES)
         val token = try {
             try {
                 api.shareDevice(car.device.id, until)
@@ -680,7 +680,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             return null
         }
         c.settings.updateDevice(car.device.id) { it.copy(shareToken = token, shareUntil = until.toEpochMilli()) }
+        try {
+            setLiveLinkUnits(car)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // The link works either way
+        }
         return LiveLink(api.shareUrl(token), until)
+    }
+
+    /**
+     * Traccar's web page shows speed in knots unless the account says otherwise, so the link's
+     * temporary account is given km/h and km, as the app shows them. Only admins can change it.
+     */
+    private suspend fun setLiveLinkUnits(car: CarInfo) {
+        val email = liveLinkEmail(car)
+        val account = api.usersJson().firstOrNull {
+            (it["email"] as? JsonPrimitive)?.content.equals(email, ignoreCase = true)
+        } ?: return
+        val attributes = buildMap<String, kotlinx.serialization.json.JsonElement> {
+            (account["attributes"] as? JsonObject)?.let { putAll(it) }
+            put("speedUnit", JsonPrimitive("kmh"))
+            put("distanceUnit", JsonPrimitive("km"))
+            put("altitudeUnit", JsonPrimitive("m"))
+            put("volumeUnit", JsonPrimitive("ltr"))
+        }
+        api.updateUser(JsonObject(account + ("attributes" to JsonObject(attributes))))
+    }
+
+    /** Traccar names a link's account after the sharing user's email (which may differ from the sign-in name). */
+    private suspend fun liveLinkEmail(car: CarInfo): String {
+        val me = runCatching { api.sessionFromToken().email }.getOrNull()?.takeIf { it.isNotBlank() } ?: settings.value.email
+        return "$me:${car.device.uniqueId}"
     }
 
     /** The car's current live link, while it lasts. */
@@ -702,9 +734,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Ends a live link early by removing the temporary account Traccar made for it. Only admins can. */
     private suspend fun removeLiveLink(car: CarInfo): Boolean {
-        // Traccar names the link's account after the sharing user's email (which may differ from the sign-in name)
-        val me = runCatching { api.sessionFromToken().email }.getOrNull()?.takeIf { it.isNotBlank() } ?: settings.value.email
-        val email = "$me:${car.device.uniqueId}"
+        val email = liveLinkEmail(car)
         val share = runCatching { api.users() }.getOrNull()?.firstOrNull { it.email.equals(email, ignoreCase = true) } ?: return false
         return runCatching { api.deleteUser(share.id) }.isSuccess
     }

@@ -72,16 +72,16 @@ internal fun ShareDialog(vm: AppViewModel, info: CarInfo, onSendSpot: () -> Unit
                         onDismiss()
                     }
                 }
-                val choices = listOf(1L to "1 hour", 4L to "4 hours", 24L to "1 day", 168L to "1 week")
+                val choices = listOf(15L to "15 min", 30L to "30 min", 60L to "1 hour", 240L to "4 hours", 1440L to "1 day", 10080L to "1 week")
                 choices.chunked(2).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        row.forEach { (hours, label) ->
+                        row.forEach { (minutes, label) ->
                             Surface(
                                 onClick = {
                                     working = true
                                     // In the app's scope, so closing the dialog or rotating doesn't lose a link the server made
                                     vm.viewModelScope.launch {
-                                        val link = vm.liveLink(info, hours)
+                                        val link = vm.liveLink(info, minutes)
                                         working = false
                                         if (link != null) send(link)
                                     }

@@ -173,6 +173,14 @@ class TraccarApi {
 
     suspend fun users(): List<User> = AppJson.decodeFromString(get("/api/users"))
 
+    /** The accounts as the server sends them, with every field, so one can be sent back changed. */
+    suspend fun usersJson(): List<JsonObject> = AppJson.decodeFromString(get("/api/users"))
+
+    suspend fun updateUser(user: JsonObject) {
+        val body = AppJson.encodeToString(JsonObject.serializer(), user).toRequestBody(JSON_TYPE)
+        execute(request(baseUrl, "/api/users").put(body).build())
+    }
+
     suspend fun deleteUser(id: Long) {
         execute(request(baseUrl, "/api/users/$id").delete().build())
     }
