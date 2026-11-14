@@ -47,7 +47,7 @@ The items and their intervals are kept on your phone; the records they read are 
 
 - **Add a record** at the top: pick the type (service, repairs, upgrades, fuel or tax), the date, and fill in the rest. A fuel record asks how much went in, whether you filled to full and whether you missed a fill-up before it. Tax has no odometer.
 - Tap any **record** in the list to change it, or to **delete** it (tap Delete twice). Picking another type moves the record to that type. Tags, extra fields and attached files a record has in LubeLogger are kept.
-- **Add a reminder** at the bottom of Reminders, or tap one to change it. Give a due date, an odometer reading, or both; with both, whichever comes first counts. Reminders can't be deleted from here; do that in LubeLogger.
+- **Add a reminder** at the bottom of Reminders, or tap one to change it or to **delete** it (tap Delete twice). Give a due date, an odometer reading, or both; with both, whichever comes first counts.
 
 Numbers can be typed with a dot or a comma. If LubeLogger refuses a change, its own message is shown; with an API key that usually means the key's role is too low.
 
