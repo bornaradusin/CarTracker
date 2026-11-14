@@ -48,7 +48,7 @@ The **Car** tab shows your car on the map, with its card at the bottom.
 **Share** on the car card offers:
 
 - **Where it is now**: a Google Maps link to the spot it's at, to send in any app.
-- **A live link** for **1 hour, 4 hours, 1 day or 1 week**: whoever opens it follows the car on a map in their browser until it ends. They can't control the car or see its trips, and they don't need an account or the app.
+- **A live link** for **15 minutes, 30 minutes, 1 hour, 4 hours, 1 day or 1 week**: whoever opens it follows the car on a map in their browser until it ends. They can't control the car or see its trips, and they don't need an account or the app.
 
 Traccar allows one live link per car at a time. While one is running, **Share** offers to send it again or **stop it now**. Stopping one early needs an admin account on the server; otherwise it stops by itself when it ends. Live links use Traccar's own sharing: see [Your Traccar server](Traccar-server#live-links).
 

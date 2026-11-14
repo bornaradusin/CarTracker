@@ -45,6 +45,8 @@ Traccar records events (ignition, places, overspeed, alarms) for every car wheth
 
 **Share → live link** uses Traccar's own device sharing. The account that makes the link must not be a temporary one, and sharing must be allowed on the server: in Traccar's web page, **Settings → Server**, leave **Disable share** off.
 
+The page a link opens is Traccar's own, and by itself it shows speed in knots. When the account that makes the link is an admin, CarTracker sets the link to km/h and km as it's made. With any other account the page follows the server's default: in Traccar's web page, **Settings → Server → Preferences**, set **Speed unit** to km/h.
+
 People who open the link can't send commands or see reports, unless the server's config turns `web.shareDevice.commands` or `web.shareDevice.reports` on.
 
 ## Road speed limits
