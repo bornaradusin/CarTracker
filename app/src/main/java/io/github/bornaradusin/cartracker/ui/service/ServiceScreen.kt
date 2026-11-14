@@ -985,6 +985,7 @@ private fun ReminderDialog(lube: LubeLogger, vehicleId: Int, existing: LubeRemin
     var notes by remember { mutableStateOf(existing?.notes.orEmpty()) }
     var working by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
+    var sureToDelete by remember { mutableStateOf(false) }
     val colors = fieldColors()
 
     AlertDialog(
@@ -1021,6 +1022,32 @@ private fun ReminderDialog(lube: LubeLogger, vehicleId: Int, existing: LubeRemin
                 )
                 Text("Give a date, an odometer reading, or both: with both, whichever comes first counts.", style = MaterialTheme.typography.bodySmall, color = c.muted)
                 problem?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.warnText) }
+                if (existing != null) {
+                    TextButton(
+                        enabled = !working,
+                        onClick = {
+                            if (!sureToDelete) {
+                                sureToDelete = true
+                            } else {
+                                working = true
+                                problem = null
+                                scope.launch {
+                                    try {
+                                        lube.deleteReminder(existing)
+                                        onSaved()
+                                        onDismiss()
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        problem = (e as? LubeException)?.message ?: "Couldn't delete it."
+                                    } finally {
+                                        working = false
+                                    }
+                                }
+                            }
+                        },
+                    ) { Text(if (sureToDelete) "Tap again to delete it from LubeLogger" else "Delete", color = c.warnText) }
+                }
             }
         },
         confirmButton = {

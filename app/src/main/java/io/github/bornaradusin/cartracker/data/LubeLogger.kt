@@ -223,6 +223,10 @@ class LubeLogger(private val context: Context) {
         write(config, "DELETE", "/api/vehicle/${record.kind.path}/delete", null, emptyMap(), id = record.id)
     }
 
+    suspend fun deleteReminder(reminder: LubeReminder, config: LubeConfig = _config.value) {
+        write(config, "DELETE", "/api/vehicle/reminders/delete", null, emptyMap(), id = reminder.id)
+    }
+
     suspend fun saveReminder(vehicleId: Int, edit: LubeReminderEdit, existing: LubeReminder?, config: LubeConfig = _config.value) {
         val fields = LinkedHashMap<String, String>()
         if (existing != null) flatten(existing.raw, fields)
@@ -317,6 +321,7 @@ class LubeLogger(private val context: Context) {
                     (response.code == 401 || response.code == 403) && changing ->
                         throw LubeException("LubeLogger didn't allow that. An API key needs the Editor role to add and change, and Manager to delete.")
                     response.code == 401 || response.code == 403 -> throw LubeException("LubeLogger didn't accept the sign-in.")
+                    response.code == 404 && changing -> throw LubeException("This LubeLogger doesn't offer that. It may need a newer version of LubeLogger.")
                     response.code == 404 -> throw LubeException("No LubeLogger found at that address.")
                     !response.isSuccessful -> throw LubeException(
                         runCatching { (json.parseToJsonElement(text) as? JsonObject)?.text("message") }.getOrNull()?.ifBlank { null }
