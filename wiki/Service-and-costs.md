@@ -51,6 +51,14 @@ The items and their intervals are kept on your phone; the records they read are 
 
 Numbers can be typed with a dot or a comma. If LubeLogger refuses a change, its own message is shown; with an API key that usually means the key's role is too low.
 
+## With CarDash (optional)
+
+[CarDash](https://github.com/bornaradusin/CarDash), on the car's radio, reads the exact kilometres from the dashboard. Connected to the same LubeLogger, it puts them there once a day, and CarTracker can use them:
+
+- **Service items** count from LubeLogger's newest reading, so with CarDash they follow the dashboard with nothing to turn on.
+- **Match the kilometres to CarDash**, under the LubeLogger settings at the bottom of the Service tab, also sets the tracker's own odometer (the one on the car screen and in trips) from those readings. The app looks at most every half hour. It finds the tracker's count at the moment the dashboard was read and moves today's count by the difference, so driving since then is kept. Changes under 200 m are left alone. It needs a Traccar account that's allowed to change the odometer; the setting's hint says what happened last time.
+- **Service items done in CarDash** arrive as service records with the item's name, so the same item here fills up too, as long as it has the same name in both apps.
+
 ## Reminder notifications
 
 With **Tell me about reminders** on, the app looks twice a day and sends one notification when a reminder becomes urgent, very urgent or past due. It tells you again only when the reminder moves up a level.
