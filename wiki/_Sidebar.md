@@ -9,6 +9,7 @@
 - [Controls](Controls)
 - [Trips](Trips)
 - [Battery](Battery)
+- [Service and costs](Service-and-costs)
 - [Alerts](Alerts)
 - [Places](Places)
 - [Look and colours](Look-and-colours)
