@@ -33,13 +33,20 @@ The **Car** tab shows your car on the map, with its card at the bottom.
 - **Parked for**: how long since the last drive ended. Right after you park it says **< 5 min**, until Traccar has seen the car stand still long enough to count the drive as over.
 - **Immobilise**: cut or restore the fuel, after your fingerprint (or the phone's PIN). The button turns orange while the fuel is cut and the car can't start. See [Controls](Controls).
 - **Alarm**: arm or disarm. It's coloured while the alarm is armed, and shows **Confirming…** until the tracker confirms.
-- **Directions**: turn-by-turn to the car in Google Maps.
+- **Find car**: see [Find my car](#find-my-car) below.
 - **Share**: see [Sharing the car](#sharing-the-car) below.
 - **All controls**: everything the tracker can do. See [Controls](Controls).
 
 **Slide the card down** to see more of the map: only its top stays showing. Slide it back up to bring it back. The map re-centres on the car each time.
 
 <br clear="right">
+
+## Find my car
+
+**Find car** on the car card shows how far the car is from you (when the app may see the phone's location and has a fresh fix) and offers:
+
+- **Walk to it** or **Drive to it**: directions to the car in your maps app.
+- **Parking timer**: paid for parking? Pick **15 min, 30 min, 1 hour or 2 hours** and you get a reminder shortly before it runs out: 5 minutes before for 15 minutes, 10 minutes before otherwise. One timer runs at a time; open **Find car** again to see when it ends or to stop it. It survives a restart of the phone.
 
 ## Sharing the car
 

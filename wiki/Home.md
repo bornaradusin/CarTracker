@@ -26,7 +26,7 @@
 
 | Page | What it covers |
 |---|---|
-| [Map](Map) | Where the car is, the car card, map styles, directions, and sharing with a live link |
+| [Map](Map) | Where the car is, the car card, map styles, find my car with a parking timer, and sharing with a live link |
 | [Controls](Controls) | Fuel cut (with fingerprint), alarm, tracker alerts, speed limit, update rate and every other command |
 | [Trips](Trips) | The last 7 days of driving, replays coloured by speed, stats by week, month and year, and a heatmap |
 | [Battery](Battery) | The car battery's voltage over a day or a week, and a low-battery warning |
