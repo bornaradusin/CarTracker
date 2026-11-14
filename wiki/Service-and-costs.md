@@ -23,6 +23,26 @@ The address and sign-in are kept on your phone only.
 
 Money is shown with your phone's currency symbol.
 
+## Service items
+
+Under **Add a record** is a list of things to service, each counting down by kilometres, months, or both, whichever comes first. A new car starts with engine oil, air filter, cabin filter, spark plugs and brake fluid at their usual intervals; these are starting points, so set them to what the car's service book says.
+
+Each item shows:
+
+- **How far off it is**: *8,284 km left*, *5 months left* or *36 days overdue*.
+- **A health bar** of 20 squares, like in a game: all lit just after it's done, going out one by one down to none when it's due. Green, amber once under half is left, red when it's due within 1,000 km or 30 days; overdue, the empty squares turn red too.
+- **How often and when next**: *Every 15,000 km or every year · next at 192,500 km or by Aug 2027*.
+
+The most urgent items are at the top. Items not set up yet say *Not set yet* and sit at the bottom.
+
+**The odometer** the items count from is the newest reading in LubeLogger, from any record. When the app's own count for the car has carried on a little past that reading (up to 10,000 km), it uses that; the line at the top of the list says which.
+
+**When an item was last done** comes from LubeLogger by itself: a service, repair or upgrade record with the item's name in its description counts as the item being done on that record's date and odometer. Name items the way you write them in LubeLogger ("Engine oil" matches "Engine oil and filter"). For work done before you kept records, tap the item and type in when it was last done; the later of the two is used.
+
+Tap an item to change its name, how often, or when it was last done, or to **remove** it. **Done today…** opens a new service record with the item's name already filled in: save it and the bar is full again. **Add an item** at the bottom adds your own.
+
+The items and their intervals are kept on your phone; the records they read are in LubeLogger.
+
 ## Adding and changing
 
 - **Add a record** at the top: pick the type (service, repairs, upgrades, fuel or tax), the date, and fill in the rest. A fuel record asks how much went in, whether you filled to full and whether you missed a fill-up before it. Tax has no odometer.
