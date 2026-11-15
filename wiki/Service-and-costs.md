@@ -39,9 +39,11 @@ The most urgent items are at the top. Items not set up yet say *Not set yet* and
 
 **When an item was last done** comes from LubeLogger by itself: a service, repair or upgrade record with the item's name in its description counts as the item being done on that record's date and odometer. Name items the way you write them in LubeLogger ("Engine oil" matches "Engine oil and filter"). For work done before you kept records, tap the item and type in when it was last done; the later of the two is used.
 
-Tap an item to change its name, how often, or when it was last done, or to **remove** it. **Done today…** opens a new service record with the item's name already filled in: save it and the bar is full again. **Add an item** at the bottom adds your own.
+Tap an item to change its name, how often, or when it was last done, or to **remove** it. **Done today…** opens a new service record with the item's name already filled in: save it and the bar is full again.
 
-The items and their intervals are kept on your phone; the records they read are in LubeLogger.
+**Add an item** at the bottom offers common parts with their usual intervals to start from (oil filter, fuel filter, timing belt, auxiliary belt, water pump, gearbox oil, Haldex oil and filter, brake pads and discs, coolant, tyres, wiper blades, battery, air con service, NCT and more), or type your own.
+
+**Where they're kept:** in LubeLogger, as one reminder each, named after the item. Its notes say how often and when it was last done (the line in square brackets is what the apps read, so leave it as it is), and it's due when the item next is, so LubeLogger shows and reminds about it too. They don't appear again under Reminders here. When work is logged with an item's name, the app moves its reminder on to the next time by itself. Items this phone had before were moved there the first time this version opened. [CarDash](https://github.com/bornaradusin/CarDash/wiki/Service) shows the same items, read only.
 
 ## Adding and changing
 
@@ -57,7 +59,7 @@ Numbers can be typed with a dot or a comma. If LubeLogger refuses a change, its 
 
 - **Service items** count from LubeLogger's newest reading, so with CarDash they follow the dashboard with nothing to turn on.
 - **Match the kilometres to CarDash**, under the LubeLogger settings at the bottom of the Service tab, also sets the tracker's own odometer (the one on the car screen and in trips) from those readings. The app looks at most every half hour. It finds the tracker's count at the moment the dashboard was read and moves today's count by the difference, so driving since then is kept. Changes under 200 m are left alone. It needs a Traccar account that's allowed to change the odometer; the setting's hint says what happened last time.
-- **Service items done in CarDash** arrive as service records with the item's name, so the same item here fills up too, as long as it has the same name in both apps.
+- **CarDash shows the service items** from LubeLogger, counting down from the dashboard's kilometres. They're set up and logged here.
 
 ## Reminder notifications
 
