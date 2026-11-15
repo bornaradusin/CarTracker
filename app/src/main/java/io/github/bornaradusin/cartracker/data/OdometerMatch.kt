@@ -20,8 +20,15 @@ class OdometerMatch(context: Context, private val lube: LubeLogger, private val 
     private val running = Mutex()
     private var lastLook = 0L
 
+    private val _result = kotlinx.coroutines.flow.MutableStateFlow(prefs.getString(KEY_RESULT, null))
+
     /** What happened last time, for the setting's hint. */
-    fun result(): String? = prefs.getString(KEY_RESULT, null)
+    val result: kotlinx.coroutines.flow.StateFlow<String?> = _result
+
+    private fun say(text: String) {
+        prefs.edit().putString(KEY_RESULT, text).apply()
+        _result.value = text
+    }
 
     suspend fun check(force: Boolean = false) {
         val config = lube.config.value
@@ -31,19 +38,35 @@ class OdometerMatch(context: Context, private val lube: LubeLogger, private val 
         if (!running.tryLock()) return
         try {
             lastLook = now
-            config.vehicles.forEach { (deviceId, vehicleId) -> match(deviceId, vehicleId, config) }
+            config.vehicles.forEach { (deviceId, vehicleId) ->
+                try {
+                    match(deviceId, vehicleId, config)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: LubeException) {
+                    say("Couldn't read LubeLogger: ${e.message}")
+                } catch (e: Exception) {
+                    say("Couldn't check: the server didn't answer. Tries again in half an hour.")
+                }
+            }
         } finally {
             running.unlock()
         }
     }
 
     private suspend fun match(deviceId: Long, vehicleId: Int, config: LubeConfig) {
-        val (at, km) = lube.carDashReading(vehicleId, config) ?: return
+        val reading = lube.carDashReading(vehicleId, config)
+        if (reading == null) {
+            say("No reading from CarDash in LubeLogger yet. CarDash sends one as the first drive of the day starts.")
+            return
+        }
+        val (at, km) = reading
         val applied = prefs.getLong(applied(deviceId), 0L)
         if (at.toEpochMilli() <= applied) return
 
-        // The tracker's count when the dashboard was read, and now
-        val before = sequenceOf(30L, 6 * 60L).firstNotNullOfOrNull { minutes ->
+        // The tracker's count when the dashboard was read: its last report before then, which can be
+        // hours earlier while the car was parked
+        val before = sequenceOf(30L, 6 * 60L, 2 * 24 * 60L, 7 * 24 * 60L).firstNotNullOfOrNull { minutes ->
             runCatching { api.route(deviceId, at.minusSeconds(minutes * 60), at.plusSeconds(60)) }.getOrNull()
                 ?.filter { p -> p.totalDistance != null && (Format.parse(p.fixTime)?.let { !it.isAfter(at.plusSeconds(60)) } ?: false) }
                 ?.maxByOrNull { Format.parse(it.fixTime) ?: Instant.MIN }
@@ -53,6 +76,7 @@ class OdometerMatch(context: Context, private val lube: LubeLogger, private val 
         if (before == null || current == null) {
             // The tracker wasn't reporting then: wait for a newer reading, unless it's this one forever
             if (Instant.now().isAfter(at.plusSeconds(2 * 86_400))) done(deviceId, at, "Skipped a reading the tracker had no count for.")
+            else say("Found CarDash's ${km} km from ${day(at)}, but not the tracker's count then yet. Tries again in half an hour.")
             return
         }
         val target = km * 1000.0 + (current - before)
@@ -70,7 +94,8 @@ class OdometerMatch(context: Context, private val lube: LubeLogger, private val 
     }
 
     private fun done(deviceId: Long, at: Instant, result: String) {
-        prefs.edit().putLong(applied(deviceId), at.toEpochMilli()).putString(KEY_RESULT, result).apply()
+        prefs.edit().putLong(applied(deviceId), at.toEpochMilli()).apply()
+        say(result)
     }
 
     private fun applied(deviceId: Long) = "applied_$deviceId"

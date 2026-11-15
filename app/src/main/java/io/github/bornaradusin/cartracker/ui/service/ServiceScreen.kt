@@ -225,10 +225,13 @@ fun ServiceScreen(vm: AppViewModel) {
                         onChange = { on -> lube.save(config.copy(notify = on)) },
                     )
                     val match = LocalContext.current.container.odometerMatch
+                    val matchResult by match.result.collectAsStateWithLifecycle()
                     val scope = rememberCoroutineScope()
+                    // Each time the tab opens, look again
+                    LaunchedEffect(config.matchOdometer) { if (config.matchOdometer) runCatching { match.check(force = true) } }
                     ToggleRow(
                         "Match the kilometres to CarDash",
-                        if (config.matchOdometer) (match.result() ?: "Waiting for a reading from CarDash")
+                        if (config.matchOdometer) (matchResult ?: "Checking…")
                         else "Sets the tracker's odometer from the dashboard readings CarDash sends to LubeLogger",
                         checked = config.matchOdometer,
                         onChange = { on ->
