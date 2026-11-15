@@ -103,7 +103,9 @@ data class LubeReminder(
 
 data class LubeData(
     val records: List<LubeRecord>,
+    /** Ordinary reminders; [serviceReminders] hold the service items. */
     val reminders: List<LubeReminder>,
+    val serviceReminders: List<LubeReminder> = emptyList(),
     /** The highest odometer reading LubeLogger has for the vehicle, from any record. */
     val odometer: Int? = null,
 )
@@ -177,7 +179,35 @@ class LubeLogger(private val context: Context) {
             emptyList()
         }
         val odometer = (records.mapNotNull { it.odometer } + readings).maxOrNull()?.takeIf { it > 0 }
-        return LubeData(records.sortedByDescending { it.date ?: LocalDate.MIN }, reminders(vehicleId, config), odometer)
+        val all = reminders(vehicleId, config)
+        val items = all.filter { ServiceItems.isItem(it) }.map { advance(vehicleId, it, records, config) }
+        return LubeData(records.sortedByDescending { it.date ?: LocalDate.MIN }, all.filterNot { ServiceItems.isItem(it) }, items, odometer)
+    }
+
+    /**
+     * An item done since (a record with its name, newer than what its reminder says): the reminder
+     * moves on to the next time, so LubeLogger and CarDash see it too. Left as it is when the key
+     * can't change things.
+     */
+    private suspend fun advance(vehicleId: Int, reminder: LubeReminder, records: List<LubeRecord>, config: LubeConfig): LubeReminder {
+        val item = ServiceItems.fromReminder(reminder) ?: return reminder
+        val st = ServiceItems.status(item, records, null)
+        if (!st.fromRecord) return reminder
+        val lastDay = st.lastDate?.toEpochDay()
+        if (lastDay == item.lastDay && st.lastKm == item.lastKm) return reminder
+        val moved = item.copy(lastDay = lastDay, lastKm = st.lastKm)
+        return try {
+            saveServiceItem(vehicleId, moved, reminder, config)
+            val edit = ServiceItems.toReminder(moved, reminder.notes)
+            reminder.copy(notes = edit.notes, dueDate = edit.dueDate, dueOdometer = edit.dueOdometer)
+        } catch (e: LubeException) {
+            reminder
+        }
+    }
+
+    /** Adds the item as a reminder, or with [existing] changes its reminder. */
+    suspend fun saveServiceItem(vehicleId: Int, item: ServiceItem, existing: LubeReminder?, config: LubeConfig = _config.value) {
+        saveReminder(vehicleId, ServiceItems.toReminder(item, existing?.notes.orEmpty()), existing, config)
     }
 
     /** The newest dashboard reading CarDash put in LubeLogger, with the moment it was taken. */
@@ -272,7 +302,11 @@ class LubeLogger(private val context: Context) {
             val told = prefs.getStringSet(KEY_TOLD, emptySet()).orEmpty()
             val now = HashSet<String>()
             config.vehicles.forEach { (deviceId, vehicleId) ->
-                reminders(vehicleId, config).filter { it.urgency != LubeUrgency.NOT_URGENT }.forEach { r ->
+                reminders(vehicleId, config)
+                    .filter { it.urgency != LubeUrgency.NOT_URGENT }
+                    // An item not set up yet isn't really due
+                    .filterNot { r -> ServiceItems.fromReminder(r)?.let { it.lastDay == null && it.lastKm == null } ?: false }
+                    .forEach { r ->
                     val key = "$vehicleId:${r.id}:${r.urgency.name}"
                     now.add(key)
                     if (key !in told) {

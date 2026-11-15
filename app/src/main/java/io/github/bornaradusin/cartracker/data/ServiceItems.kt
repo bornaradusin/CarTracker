@@ -99,6 +99,84 @@ class ServiceItems(context: Context) {
 
         fun newId(): String = "c" + System.currentTimeMillis()
 
+        /** Common parts with their usual intervals, to pick from when adding an item. */
+        val presets = listOf(
+            ServiceItem("", "Engine oil", 15_000, 12),
+            ServiceItem("", "Oil filter", 15_000, 12),
+            ServiceItem("", "Air filter", 30_000, 24),
+            ServiceItem("", "Cabin filter", 15_000, 12),
+            ServiceItem("", "Fuel filter", 60_000, 48),
+            ServiceItem("", "Spark plugs", 60_000, 48),
+            ServiceItem("", "Glow plugs", 100_000, null),
+            ServiceItem("", "Timing belt", 120_000, 60),
+            ServiceItem("", "Auxiliary belt", 120_000, 60),
+            ServiceItem("", "Water pump", 120_000, 60),
+            ServiceItem("", "Gearbox oil", 120_000, null),
+            ServiceItem("", "Haldex oil and filter", 60_000, 36),
+            ServiceItem("", "Brake fluid", null, 24),
+            ServiceItem("", "Brake pads", 40_000, null),
+            ServiceItem("", "Brake discs", 80_000, null),
+            ServiceItem("", "Coolant", null, 60),
+            ServiceItem("", "Tyres", 40_000, 60),
+            ServiceItem("", "Wiper blades", null, 12),
+            ServiceItem("", "Battery", null, 60),
+            ServiceItem("", "Air con service", null, 24),
+            ServiceItem("", "NCT", null, 24),
+        )
+
+        /** Whether this car's items were already moved to LubeLogger, so removing them all doesn't bring them back. */
+        fun moved(context: Context, deviceId: Long, vehicleId: Int): Boolean =
+            context.getSharedPreferences("service_items", Context.MODE_PRIVATE).getBoolean("moved_${deviceId}_$vehicleId", false)
+
+        fun setMoved(context: Context, deviceId: Long, vehicleId: Int) {
+            context.getSharedPreferences("service_items", Context.MODE_PRIVATE).edit().putBoolean("moved_${deviceId}_$vehicleId", true).apply()
+        }
+
+        // ---- kept in LubeLogger, as one reminder each ----
+
+        /** The line in a reminder's notes that makes it a service item. CarDash reads it too. */
+        private val MARK = Regex("""\[service item: every=(\d*)km,(\d*)mo; last=(\d*)km,([0-9-]*)\]""")
+
+        fun isItem(reminder: LubeReminder): Boolean = MARK.containsMatchIn(reminder.notes)
+
+        /** The item a reminder holds, or null when it's an ordinary reminder. Its id is "r" and the reminder's. */
+        fun fromReminder(reminder: LubeReminder): ServiceItem? {
+            val m = MARK.find(reminder.notes) ?: return null
+            val (km, months, lastKm, lastDay) = m.destructured
+            return ServiceItem(
+                id = "r${reminder.id}",
+                name = reminder.description,
+                everyKm = km.toIntOrNull(),
+                everyMonths = months.toIntOrNull(),
+                lastKm = lastKm.toIntOrNull(),
+                lastDay = runCatching { LocalDate.parse(lastDay).toEpochDay() }.getOrNull(),
+            )
+        }
+
+        /** The reminder for [item]: due when it next is, with its interval and last time in the notes. */
+        fun toReminder(item: ServiceItem, oldNotes: String = ""): LubeReminderEdit {
+            val last = item.lastDay?.let(LocalDate::ofEpochDay)
+            val nextKm = if (item.everyKm != null && item.lastKm != null) item.lastKm + item.everyKm else null
+            val nextDate = if (item.everyMonths != null && last != null) last.plusMonths(item.everyMonths.toLong()) else null
+            val every = listOfNotNull(
+                item.everyKm?.let { String.format(java.util.Locale.US, "%,d km", it) },
+                item.everyMonths?.let { "$it months" },
+            ).joinToString(" or ")
+            val lastText = if (last == null && item.lastKm == null) "Not set up yet: set when it was last done in CarTracker."
+            else "Last done" + (last?.let { " $it" } ?: "") + (item.lastKm?.let { String.format(java.util.Locale.US, " at %,d km", it) } ?: "") + "."
+            // Whatever else was written in the notes stays
+            val kept = oldNotes.lines().filterNot { MARK.containsMatchIn(it) || it.startsWith("Every ") || it.startsWith("Last done") || it.startsWith("Not set up yet") }
+                .joinToString("\n").trim()
+            val mark = "[service item: every=${item.everyKm ?: ""}km,${item.everyMonths ?: ""}mo; last=${item.lastKm ?: ""}km,${last ?: ""}]"
+            val notes = listOf("Every $every.", lastText, kept, mark).filter { it.isNotBlank() }.joinToString("\n")
+            return LubeReminderEdit(
+                description = item.name,
+                dueDate = nextDate ?: if (nextKm == null) LocalDate.now() else null,
+                dueOdometer = nextKm,
+                notes = notes,
+            )
+        }
+
         /** Most urgent first; items not set up yet last, in the order they were added. */
         fun sorted(statuses: List<ServiceStatus>): List<ServiceStatus> = statuses.sortedWith(
             compareBy<ServiceStatus> {

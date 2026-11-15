@@ -18,8 +18,8 @@ android {
         applicationId = "io.github.bornaradusin.cartracker"
         minSdk = 26
         targetSdk = 36
-        versionCode = 25
-        versionName = "1.2.2"
+        versionCode = 26
+        versionName = "1.2.3"
     }
 
     signingConfigs {

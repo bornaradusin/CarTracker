@@ -123,6 +123,38 @@ fun ServiceScreen(vm: AppViewModel) {
     var editingItem by remember { mutableStateOf<ServiceStatus?>(null) }
     /** An item being marked done: the record to add starts with its name. */
     var doneItem by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val itemScope = rememberCoroutineScope()
+
+    /** Saves or removes an item in LubeLogger, then reads everything again. */
+    fun changeItems(action: suspend () -> Unit) {
+        itemScope.launch {
+            try {
+                action()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error = (e as? LubeException)?.message ?: "Couldn't save the item in LubeLogger."
+            }
+            reload++
+        }
+    }
+
+    // The items this phone had before they were kept in LubeLogger: moved there once
+    LaunchedEffect(data, vehicleId) {
+        val loaded = data ?: return@LaunchedEffect
+        val vehicle = vehicleId ?: return@LaunchedEffect
+        if (loaded.serviceReminders.isNotEmpty() || ServiceItems.moved(context, deviceId, vehicle)) return@LaunchedEffect
+        try {
+            serviceItems.forCar(allItems, deviceId).forEach { lube.saveServiceItem(vehicle, it, null) }
+            ServiceItems.setMoved(context, deviceId, vehicle)
+            reload++
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            error = "Couldn't move the service items to LubeLogger: " + ((e as? LubeException)?.message ?: "it didn't answer.")
+        }
+    }
 
     // Another car or server starts empty; after a change the old list stays up until the new one is in
     LaunchedEffect(config.server, config.apiKey, config.user, vehicleId) { data = null }
@@ -164,8 +196,8 @@ fun ServiceScreen(vm: AppViewModel) {
                         error?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.warnText) }
                         BigButton("Add a record", modifier = Modifier.fillMaxWidth(), icon = Ic.plus) { addingRecord = true }
                         val carKm = ServiceItems.odometer(loaded.odometer, info.position?.totalDistance?.let { it / 1000.0 })
-                        val statuses = remember(allItems, deviceId, loaded, carKm) {
-                            ServiceItems.sorted(serviceItems.forCar(allItems, deviceId).map { ServiceItems.status(it, loaded.records, carKm) })
+                        val statuses = remember(loaded, carKm) {
+                            ServiceItems.sorted(loaded.serviceReminders.mapNotNull { ServiceItems.fromReminder(it) }.map { ServiceItems.status(it, loaded.records, carKm) })
                         }
                         ItemsCard(statuses, carKm, fromLube = carKm != null && carKm == loaded.odometer, onAdd = { addingItem = true }, onEdit = { editingItem = it })
                         Reminders(loaded.reminders, onAdd = { addingReminder = true }, onEdit = { editingReminder = it })
@@ -226,10 +258,14 @@ fun ServiceScreen(vm: AppViewModel) {
         )
     }
     if (addingItem || editingItem != null) {
+        val reminderOf = { item: ServiceItem -> data?.serviceReminders?.firstOrNull { "r${it.id}" == item.id } }
         ItemDialog(
             status = editingItem,
-            onSave = { serviceItems.save(deviceId, it) },
-            onRemove = { serviceItems.remove(deviceId, it) },
+            have = data?.serviceReminders?.map { it.description.lowercase() }?.toSet().orEmpty(),
+            onSave = { item -> vehicleId?.let { v -> changeItems { lube.saveServiceItem(v, item, reminderOf(item)) } } },
+            onRemove = { id ->
+                data?.serviceReminders?.firstOrNull { "r${it.id}" == id }?.let { r -> changeItems { lube.deleteReminder(r) } }
+            },
             onDone = { doneItem = it },
             onDismiss = {
                 addingItem = false
@@ -730,7 +766,7 @@ private fun nextText(st: ServiceStatus): String {
 }
 
 @Composable
-private fun ItemDialog(status: ServiceStatus?, onSave: (ServiceItem) -> Unit, onRemove: (String) -> Unit, onDone: (String) -> Unit, onDismiss: () -> Unit) {
+private fun ItemDialog(status: ServiceStatus?, have: Set<String>, onSave: (ServiceItem) -> Unit, onRemove: (String) -> Unit, onDone: (String) -> Unit, onDismiss: () -> Unit) {
     val c = LocalAppColors.current
     val item = status?.item
     var name by remember { mutableStateOf(item?.name.orEmpty()) }
@@ -767,6 +803,35 @@ private fun ItemDialog(status: ServiceStatus?, onSave: (ServiceItem) -> Unit, on
         title = { Text(if (item == null) "Add an item" else item.name.ifBlank { "Item" }, color = c.ink) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (item == null) {
+                    val choices = ServiceItems.presets.filter { it.name.lowercase() !in have }
+                    if (choices.isNotEmpty()) {
+                        Text("Pick a part, or type your own below", style = MaterialTheme.typography.bodySmall, color = c.muted)
+                        choices.chunked(2).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                row.forEach { preset ->
+                                    val picked = name == preset.name
+                                    Surface(
+                                        onClick = {
+                                            name = preset.name
+                                            everyKm = preset.everyKm?.toString().orEmpty()
+                                            everyMonths = preset.everyMonths?.toString().orEmpty()
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (picked) c.accent else c.surface2,
+                                        contentColor = if (picked) c.onAccent else c.ink,
+                                        modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp)) {
+                                            Text(preset.name, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                    }
+                                }
+                                if (row.size == 1) Box(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true, colors = colors, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
