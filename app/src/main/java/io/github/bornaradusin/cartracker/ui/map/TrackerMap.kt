@@ -315,6 +315,9 @@ fun TrackerMap(
 /** Shows where you are as a blue dot, with the way your phone is facing. Needs location allowed first. */
 @SuppressLint("MissingPermission")
 private fun showMe(context: Context, map: MapLibreMap, style: Style) {
+    // When the app opens, a second style can start loading just after the first one; the dot is
+    // only put on the style the map is actually showing, or MapLibre crashes once that one goes
+    if (map.style !== style || !style.isFullyLoaded) return
     runCatching {
         val component = map.locationComponent
         component.activateLocationComponent(
