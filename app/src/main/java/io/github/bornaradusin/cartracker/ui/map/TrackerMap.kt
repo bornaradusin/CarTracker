@@ -321,7 +321,12 @@ private fun showMe(context: Context, map: MapLibreMap, style: Style) {
     runCatching {
         val component = map.locationComponent
         component.activateLocationComponent(
-            LocationComponentActivationOptions.builder(context, style).useDefaultLocationEngine(true).build(),
+            // MapLibre's own location layer: the dot's moves only change that layer, and are skipped
+            // once its style has gone, instead of reaching into the old style and crashing the app
+            LocationComponentActivationOptions.builder(context, style)
+                .useDefaultLocationEngine(true)
+                .useSpecializedLocationLayer(true)
+                .build(),
         )
         component.isLocationComponentEnabled = true
         component.cameraMode = CameraMode.NONE
